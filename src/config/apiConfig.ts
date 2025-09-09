@@ -20,7 +20,7 @@ export interface APIConfig {
 // Production API Configuration
 export const apiConfig: APIConfig = {
   userCreation: {
-    baseUrl: 'https://dev-test.credissuer.com',
+    baseUrl: 'https://id.digital.credissuer.com',
     endpoint: '/api/users/create'
   },
   ocr: {
