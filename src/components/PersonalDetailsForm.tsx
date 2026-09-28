@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { User, Mail, Phone, Calendar, Users, AlertCircle, ArrowRight, ArrowLeft, CheckCircle, Edit3 } from 'lucide-react';
+import React, { useState } from 'react';
+import { User, Mail, Phone, Calendar, Users, AlertCircle, ArrowRight } from 'lucide-react';
 
 interface PersonalDetails {
   firstName: string;
@@ -13,40 +13,22 @@ interface PersonalDetails {
 
 interface PersonalDetailsFormProps {
   onNext: (details: PersonalDetails) => void;
-  onBack: () => void;
-  extractedData?: any;
+  initialValues?: PersonalDetails;
 }
 
-export default function PersonalDetailsForm({ onNext, onBack, extractedData }: PersonalDetailsFormProps) {
-  const [formData, setFormData] = useState<PersonalDetails>({
-    firstName: '',
-    lastName: '',
-    email: '',
-    phone: '',
-    gender: '',
-    dateOfBirth: '',
-    nationalId: ''
-  });
+const emptyForm: PersonalDetails = {
+  firstName: '',
+  lastName: '',
+  email: '',
+  phone: '',
+  gender: '',
+  dateOfBirth: '',
+  nationalId: ''
+};
+
+export default function PersonalDetailsForm({ onNext, initialValues }: PersonalDetailsFormProps) {
+  const [formData, setFormData] = useState<PersonalDetails>(initialValues || emptyForm);
   const [errors, setErrors] = useState<Partial<PersonalDetails>>({});
-  const [isAutoFilled, setIsAutoFilled] = useState(false);
-
-  // Auto-fill form when extractedData is available
-  useEffect(() => {
-    if (extractedData) {
-      const autoFilledData: PersonalDetails = {
-        firstName: extractedData.firstName || '',
-        lastName: extractedData.lastName || '',
-        email: extractedData.email || '',
-        phone: extractedData.phone || '',
-        gender: extractedData.gender || '',
-        dateOfBirth: extractedData.dateOfBirth || '',
-        nationalId: extractedData.nationalId || ''
-      };
-
-      setFormData(autoFilledData);
-      setIsAutoFilled(true);
-    }
-  }, [extractedData]);
 
   const validatePhoneNumber = (phone: string): boolean => {
     if (!phone.trim()) return false;
@@ -152,6 +134,11 @@ export default function PersonalDetailsForm({ onNext, onBack, extractedData }: P
     }
   };
 
+  const inputClass = (hasError: boolean) =>
+    `w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#5D5FEF] focus:border-[#5D5FEF] transition-all duration-200 text-sm ${
+      hasError ? 'border-red-300 bg-red-50' : 'border-gray-200 hover:border-gray-300'
+    }`;
+
   return (
     <div className="max-w-4xl mx-auto">
       <div className="bg-white rounded-xl shadow-lg overflow-hidden">
@@ -161,44 +148,14 @@ export default function PersonalDetailsForm({ onNext, onBack, extractedData }: P
               <div className="inline-flex items-center justify-center w-10 h-10 bg-[#5D5FEF]/10 rounded-lg">
                 <User className="w-5 h-5 text-[#5D5FEF]" />
               </div>
-              {isAutoFilled && (
-                <div className="inline-flex items-center justify-center w-10 h-10 bg-green-100 rounded-lg">
-                  <CheckCircle className="w-5 h-5 text-green-600" />
-                </div>
-              )}
             </div>
             <h2 className="text-xl font-bold text-gray-900 mb-1">
-              {isAutoFilled ? 'Review Auto-Filled Information' : 'Personal Information'}
+              Personal Information
             </h2>
             <p className="text-sm text-gray-600">
-              {isAutoFilled 
-                ? 'We have automatically filled the form from your National ID. Please review and edit if needed.'
-                : 'Please provide your personal information to continue the registration process'
-              }
+              Enter your personal details as they appear on your National ID
             </p>
           </div>
-
-          {/* Auto-fill Notice */}
-          {isAutoFilled && (
-            <div className="bg-green-50 rounded-lg p-4 border border-green-200 mb-6">
-              <div className="flex items-start space-x-3">
-                <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <CheckCircle className="w-4 h-4 text-white" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-green-900 mb-1 text-sm">Auto-Fill Complete</h3>
-                  <p className="text-xs text-green-800 mb-2">
-                    We've automatically filled the form using data extracted from your National ID document. 
-                    Please review all fields carefully and make any necessary corrections.
-                  </p>
-                  <div className="flex items-center space-x-1 text-xs text-green-700">
-                    <Edit3 className="w-3 h-3" />
-                    <span>Click any field to edit the information</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
           
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Name Fields */}
@@ -207,9 +164,6 @@ export default function PersonalDetailsForm({ onNext, onBack, extractedData }: P
                 <label htmlFor="firstName" className="block text-xs font-semibold text-gray-900">
                   <User className="w-3 h-3 inline mr-1 text-[#5D5FEF]" />
                   First Name *
-                  {isAutoFilled && formData.firstName && (
-                    <span className="ml-1 text-xs text-green-600 bg-green-100 px-1 py-0.5 rounded">Auto-filled</span>
-                  )}
                 </label>
                 <input
                   type="text"
@@ -217,11 +171,7 @@ export default function PersonalDetailsForm({ onNext, onBack, extractedData }: P
                   value={formData.firstName}
                   onChange={(e) => handleInputChange('firstName', e.target.value)}
                   placeholder="Enter your first name"
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#5D5FEF] focus:border-[#5D5FEF] transition-all duration-200 text-sm ${
-                    errors.firstName ? 'border-red-300 bg-red-50' : 
-                    isAutoFilled && formData.firstName ? 'border-green-300 bg-green-50' :
-                    'border-gray-200 hover:border-gray-300'
-                  }`}
+                  className={inputClass(!!errors.firstName)}
                 />
                 {errors.firstName && (
                   <div className="flex items-center space-x-1 text-red-600 text-xs">
@@ -235,9 +185,6 @@ export default function PersonalDetailsForm({ onNext, onBack, extractedData }: P
                 <label htmlFor="lastName" className="block text-xs font-semibold text-gray-900">
                   <User className="w-3 h-3 inline mr-1 text-[#5D5FEF]" />
                   Last Name *
-                  {isAutoFilled && formData.lastName && (
-                    <span className="ml-1 text-xs text-green-600 bg-green-100 px-1 py-0.5 rounded">Auto-filled</span>
-                  )}
                 </label>
                 <input
                   type="text"
@@ -245,11 +192,7 @@ export default function PersonalDetailsForm({ onNext, onBack, extractedData }: P
                   value={formData.lastName}
                   onChange={(e) => handleInputChange('lastName', e.target.value)}
                   placeholder="Enter your last name"
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#5D5FEF] focus:border-[#5D5FEF] transition-all duration-200 text-sm ${
-                    errors.lastName ? 'border-red-300 bg-red-50' : 
-                    isAutoFilled && formData.lastName ? 'border-green-300 bg-green-50' :
-                    'border-gray-200 hover:border-gray-300'
-                  }`}
+                  className={inputClass(!!errors.lastName)}
                 />
                 {errors.lastName && (
                   <div className="flex items-center space-x-1 text-red-600 text-xs">
@@ -274,9 +217,7 @@ export default function PersonalDetailsForm({ onNext, onBack, extractedData }: P
                   value={formData.email}
                   onChange={(e) => handleInputChange('email', e.target.value)}
                   placeholder="Enter your email address"
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#5D5FEF] focus:border-[#5D5FEF] transition-all duration-200 text-sm ${
-                    errors.email ? 'border-red-300 bg-red-50' : 'border-gray-200 hover:border-gray-300'
-                  }`}
+                  className={inputClass(!!errors.email)}
                 />
                 {errors.email && (
                   <div className="flex items-center space-x-1 text-red-600 text-xs">
@@ -298,9 +239,7 @@ export default function PersonalDetailsForm({ onNext, onBack, extractedData }: P
                   value={formData.phone}
                   onChange={(e) => handlePhoneChange(e.target.value)}
                   placeholder="e.g., +91 98765 43210 or 9876543210"
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#5D5FEF] focus:border-[#5D5FEF] transition-all duration-200 text-sm ${
-                    errors.phone ? 'border-red-300 bg-red-50' : 'border-gray-200 hover:border-gray-300'
-                  }`}
+                  className={inputClass(!!errors.phone)}
                 />
                 {errors.phone && (
                   <div className="flex items-center space-x-1 text-red-600 text-xs">
@@ -317,19 +256,12 @@ export default function PersonalDetailsForm({ onNext, onBack, extractedData }: P
                 <label htmlFor="gender" className="block text-xs font-semibold text-gray-900">
                   <Users className="w-3 h-3 inline mr-1 text-[#5D5FEF]" />
                   Gender *
-                  {isAutoFilled && formData.gender && (
-                    <span className="ml-1 text-xs text-green-600 bg-green-100 px-1 py-0.5 rounded">Auto-filled</span>
-                  )}
                 </label>
                 <select
                   id="gender"
                   value={formData.gender}
                   onChange={(e) => handleInputChange('gender', e.target.value)}
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#5D5FEF] focus:border-[#5D5FEF] transition-all duration-200 text-sm ${
-                    errors.gender ? 'border-red-300 bg-red-50' : 
-                    isAutoFilled && formData.gender ? 'border-green-300 bg-green-50' :
-                    'border-gray-200 hover:border-gray-300'
-                  }`}
+                  className={inputClass(!!errors.gender)}
                 >
                   <option value="">Select gender</option>
                   <option value="Male">Male</option>
@@ -348,9 +280,6 @@ export default function PersonalDetailsForm({ onNext, onBack, extractedData }: P
                 <label htmlFor="dateOfBirth" className="block text-xs font-semibold text-gray-900">
                   <Calendar className="w-3 h-3 inline mr-1 text-[#5D5FEF]" />
                   Date of Birth *
-                  {isAutoFilled && formData.dateOfBirth && (
-                    <span className="ml-1 text-xs text-green-600 bg-green-100 px-1 py-0.5 rounded">Auto-filled</span>
-                  )}
                 </label>
                 <input
                   type="date"
@@ -358,11 +287,7 @@ export default function PersonalDetailsForm({ onNext, onBack, extractedData }: P
                   value={formData.dateOfBirth}
                   onChange={(e) => handleInputChange('dateOfBirth', e.target.value)}
                   max={new Date().toISOString().split('T')[0]}
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#5D5FEF] focus:border-[#5D5FEF] transition-all duration-200 text-sm ${
-                    errors.dateOfBirth ? 'border-red-300 bg-red-50' : 
-                    isAutoFilled && formData.dateOfBirth ? 'border-green-300 bg-green-50' :
-                    'border-gray-200 hover:border-gray-300'
-                  }`}
+                  className={inputClass(!!errors.dateOfBirth)}
                 />
                 {errors.dateOfBirth && (
                   <div className="flex items-center space-x-1 text-red-600 text-xs">
@@ -377,9 +302,6 @@ export default function PersonalDetailsForm({ onNext, onBack, extractedData }: P
             <div className="space-y-1">
               <label htmlFor="nationalId" className="block text-xs font-semibold text-gray-900">
                 National ID Number *
-                {isAutoFilled && formData.nationalId && (
-                  <span className="ml-1 text-xs text-green-600 bg-green-100 px-1 py-0.5 rounded">Auto-filled</span>
-                )}
               </label>
               <input
                 type="text"
@@ -387,11 +309,7 @@ export default function PersonalDetailsForm({ onNext, onBack, extractedData }: P
                 value={formData.nationalId}
                 onChange={(e) => handleInputChange('nationalId', e.target.value)}
                 placeholder="Enter your National ID number"
-                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#5D5FEF] focus:border-[#5D5FEF] transition-all duration-200 text-sm ${
-                  errors.nationalId ? 'border-red-300 bg-red-50' : 
-                  isAutoFilled && formData.nationalId ? 'border-green-300 bg-green-50' :
-                  'border-gray-200 hover:border-gray-300'
-                }`}
+                className={inputClass(!!errors.nationalId)}
               />
               {errors.nationalId && (
                 <div className="flex items-center space-x-1 text-red-600 text-xs">
@@ -408,20 +326,10 @@ export default function PersonalDetailsForm({ onNext, onBack, extractedData }: P
               </h3>
               <p className="text-xs text-[#5D5FEF]/80">
                 Your personal information is encrypted and securely stored. We only use this data for identity verification and credential issuance purposes.
-                {isAutoFilled && ' Extracted data is processed locally and securely.'}
               </p>
             </div>
 
-            <div className="flex justify-between pt-4">
-              <button
-                type="button"
-                onClick={onBack}
-                className="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-all duration-200 text-sm"
-              >
-                <ArrowLeft className="w-4 h-4 mr-1" />
-                Back
-              </button>
-              
+            <div className="flex justify-end pt-4">
               <button
                 type="submit"
                 className="inline-flex items-center px-6 py-2 bg-gradient-to-r from-[#5D5FEF] to-[#7C3AED] text-white font-semibold rounded-lg hover:from-[#5D5FEF]/90 hover:to-[#7C3AED]/90 focus:outline-none focus:ring-2 focus:ring-[#5D5FEF] focus:ring-offset-2 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 text-sm"

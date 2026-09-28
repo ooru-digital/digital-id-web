@@ -1,16 +1,14 @@
 import React, { useState } from 'react';
-import { Shield, Lock, User, FileText, Camera, CheckCircle } from 'lucide-react';
+import { Shield, User, Camera, CheckCircle } from 'lucide-react';
 import StepIndicator from './components/StepIndicator';
-import DocumentUpload from './components/DocumentUpload';
 import PersonalDetailsForm from './components/PersonalDetailsForm';
 import SelfieCapture from './components/SelfieCapture';
 import SuccessScreen from './components/SuccessScreen';
-import ProcessingScreen from './components/ProcessingScreen';
 import FailedScreen from './components/FailedScreen';
 import LoginPage from './components/LoginPage';
-import { apiConfig, buildUserCreationUrl } from './config/apiConfig';
+import { buildUserCreationUrl } from './config/apiConfig';
 
-type Step = 'document' | 'personal' | 'selfie' | 'success' | 'failed';
+type Step = 'personal' | 'selfie' | 'success' | 'failed';
 
 interface PersonalDetails {
   firstName: string;
@@ -24,10 +22,8 @@ interface PersonalDetails {
 
 interface RegistrationData {
   personalDetails?: PersonalDetails;
-  document?: File;
   selfie?: string;
   userId?: string;
-  extractedData?: any;
 }
 
 interface UserCreationResponse {
@@ -43,7 +39,7 @@ interface User {
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<User | null>(null);
-  const [currentStep, setCurrentStep] = useState<Step>('document');
+  const [currentStep, setCurrentStep] = useState<Step>('personal');
   const [registrationData, setRegistrationData] = useState<RegistrationData>({});
   const [error, setError] = useState('');
 
@@ -55,18 +51,9 @@ function App() {
   const handleLogout = () => {
     setUser(null);
     setIsAuthenticated(false);
-    setCurrentStep('document');
+    setCurrentStep('personal');
     setRegistrationData({});
     setError('');
-  };
-
-  const handleDocumentUpload = (file: File, extractedData?: any) => {
-    setRegistrationData(prev => ({ 
-      ...prev, 
-      document: file,
-      extractedData: extractedData 
-    }));
-    setCurrentStep('personal');
   };
 
   const handlePersonalDetails = (details: PersonalDetails) => {
@@ -201,18 +188,13 @@ function App() {
     }
   };
 
-  const handleBackToDocument = () => {
-    setCurrentStep('document');
-    setError('');
-  };
-
   const handleBackToPersonal = () => {
     setCurrentStep('personal');
     setError('');
   };
 
   const handleStartOver = () => {
-    setCurrentStep('document');
+    setCurrentStep('personal');
     setRegistrationData({});
     setError('');
   };
@@ -224,30 +206,27 @@ function App() {
 
   const getStepNumber = (step: Step) => {
     switch (step) {
-      case 'document': return 1;
-      case 'personal': return 2;
-      case 'selfie': return 3;
-      case 'success': return 3;
-      case 'failed': return 3;
+      case 'personal': return 1;
+      case 'selfie': return 2;
+      case 'success': return 2;
+      case 'failed': return 2;
       default: return 1;
     }
   };
 
   const getStepIcon = (step: Step) => {
     switch (step) {
-      case 'document': return FileText;
       case 'personal': return User;
       case 'selfie': return Camera;
       case 'success': return CheckCircle;
       case 'failed': return Shield;
-      default: return FileText;
+      default: return User;
     }
   };
 
   const getStepTitle = (step: Step) => {
     switch (step) {
-      case 'document': return 'Upload National ID';
-      case 'personal': return 'Verify Information';
+      case 'personal': return 'Enter Your Details';
       case 'selfie': return 'Identity Verification';
       case 'success': return 'Digital ID Created';
       case 'failed': return 'Registration Failed';
@@ -257,12 +236,11 @@ function App() {
 
   const getStepDescription = (step: Step) => {
     switch (step) {
-      case 'document': return 'Upload your physical National ID for automatic data extraction';
-      case 'personal': return 'Review and edit the extracted information';
+      case 'personal': return 'Provide your personal information to create your digital ID';
       case 'selfie': return 'Take a selfie to complete your identity verification';
       case 'success': return 'Your digital national ID has been successfully created';
       case 'failed': return 'We encountered an issue with your registration';
-      default: return 'Get your secure GovPass ID in just 3 simple steps. Fast, secure, and officially recognized.';
+      default: return 'Get your secure GovPass ID in just 2 simple steps. Fast, secure, and officially recognized.';
     }
   };
 
@@ -327,15 +305,15 @@ function App() {
             </div>
 
             {/* Features */}
-            {currentStep === 'document' && (
+            {currentStep === 'personal' && (
               <div className="flex flex-wrap justify-center gap-4 text-xs text-white">
                 <div className="flex items-center space-x-1">
                   <div className="w-1.5 h-1.5 bg-yellow-400 rounded-full"></div>
-                  <span>Smart data extraction</span>
+                  <span>Secure registration</span>
                 </div>
                 <div className="flex items-center space-x-1">
                   <div className="w-1.5 h-1.5 bg-green-400 rounded-full"></div>
-                  <span>Auto-fill forms</span>
+                  <span>Officially recognized</span>
                 </div>
                 <div className="flex items-center space-x-1">
                   <div className="w-1.5 h-1.5 bg-blue-400 rounded-full"></div>
@@ -353,22 +331,15 @@ function App() {
           <div className="mb-6">
             <StepIndicator 
               currentStep={getStepNumber(currentStep)} 
-              totalSteps={3} 
+              totalSteps={2} 
             />
           </div>
-        )}
-
-        {currentStep === 'document' && (
-          <DocumentUpload 
-            onNext={handleDocumentUpload}
-          />
         )}
 
         {currentStep === 'personal' && (
           <PersonalDetailsForm 
             onNext={handlePersonalDetails}
-            onBack={handleBackToDocument}
-            extractedData={registrationData.extractedData}
+            initialValues={registrationData.personalDetails}
           />
         )}
 
