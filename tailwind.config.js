@@ -27,6 +27,7 @@ export default {
         pass: '#0f6b5a',
         warn: '#8a5a00',
         fail: '#b3261e',
+        credissuer: '#3538cd',
       },
       fontFamily: {
         sans: ['"Clash Grotesk"', '"Helvetica Neue"', 'Arial', 'sans-serif'],

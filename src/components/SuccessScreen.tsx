@@ -65,6 +65,19 @@ export default function SuccessScreen({ onStartOver, card, svgUrl, credentialId 
             </div>
           </div>
 
+          <motion.p
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease, delay: 0.9 }}
+            className="flex items-center gap-2 self-start rounded-pill border border-credissuer/25 bg-credissuer/5 py-1.5 pl-2 pr-4 text-small text-ink-muted"
+          >
+            <span className="flex h-5 w-5 flex-none items-center justify-center rounded-pill bg-credissuer text-ink-on-strong">
+              <Check className="h-3 w-3" aria-hidden />
+            </span>
+            Signed &amp; issued via
+            <img src="/brand/credissuer-logo.svg" alt="CredIssuer" className="h-4 w-auto" />
+          </motion.p>
+
           <ul className="grid grid-cols-1 gap-3 text-small sm:grid-cols-2">
             {BENEFITS.map(item => (
               <li key={item} className="flex items-start gap-2">

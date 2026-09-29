@@ -18,6 +18,18 @@ const TIPS = [
   'Your Digital ID includes a QR code so it can be verified instantly.'
 ];
 
+// ponytail: backend exposes no per-check status (one POST + status poll), so checks 1-4 tick on a timer.
+// The last check never completes here; a real Completed status unmounts this for the success screen.
+// Drive `ticked` from real status fields once the issuer reports them.
+const CHECKS = [
+  { active: 'Verifying document', done: 'Document verified', description: 'Checking your uploaded document.' },
+  { active: 'Matching your face', done: 'Face match successful', description: 'Comparing your selfie with your document photo.' },
+  { active: 'Checking NID database', done: 'NID database check successful', description: 'Confirming your record in the National ID database.' },
+  { active: 'Checking for duplicate NRC', done: 'Duplicate NRC check passed', description: 'Making sure this NRC has no other Digital ID.' },
+  { active: 'Signing and issuing your Digital ID', done: 'Digital ID issued', description: 'Creating your verifiable credential with CredIssuer.' }
+];
+const CHECK_INTERVAL_MS = 900;
+
 const ease = [0.22, 1, 0.36, 1] as const;
 
 const formatElapsed = (seconds: number) => {
@@ -31,14 +43,17 @@ export default function IssuanceProgress({ transactionId, status, card }: Issuan
   const [tipIndex, setTipIndex] = useState(0);
   const [copied, setCopied] = useState(false);
   const [introStage, setIntroStage] = useState(0);
+  const [ticked, setTicked] = useState(0);
 
   useEffect(() => {
     const elapsedTimer = setInterval(() => setElapsedSeconds(s => s + 1), 1000);
+    const checkTimer = setInterval(() => setTicked(t => Math.min(t + 1, CHECKS.length - 1)), CHECK_INTERVAL_MS);
     const tipTimer = setInterval(() => setTipIndex(i => (i + 1) % TIPS.length), 5000);
     // Photo, then fields, while the submission is in flight
     const introTimers = [setTimeout(() => setIntroStage(1), 250), setTimeout(() => setIntroStage(2), 800)];
     return () => {
       clearInterval(elapsedTimer);
+      clearInterval(checkTimer);
       clearInterval(tipTimer);
       introTimers.forEach(clearTimeout);
     };
@@ -58,27 +73,15 @@ export default function IssuanceProgress({ transactionId, status, card }: Issuan
   // The MRZ types out once the issuer has accepted the request
   const cardStage = transactionId ? 3 : introStage;
 
-  const stages: { title: string; description: string; state: StageState }[] = [
-    {
-      title: 'Details submitted',
-      description: transactionId
-        ? 'Your application has been received by the issuing authority.'
-        : 'Securely submitting your details and photo.',
-      state: transactionId ? 'done' : 'active'
-    },
-    {
-      title: 'Generating and signing your Digital ID',
-      description: transactionId
-        ? `Creating your verifiable credential.${status ? ` Status: ${status}` : ''}`
-        : 'Starts once your submission is received.',
-      state: transactionId ? 'active' : 'pending'
-    },
-    {
-      title: 'Ready to use',
-      description: 'Your Digital ID is delivered to your email and your wallet.',
-      state: 'pending'
-    }
-  ];
+  const stages = CHECKS.map((check, index) => {
+    const state: StageState = index < ticked ? 'done' : index === ticked ? 'active' : 'pending';
+    const isLast = index === CHECKS.length - 1;
+    return {
+      title: state === 'done' ? check.done : check.active,
+      description: isLast && status ? `${check.description} Status: ${status}` : check.description,
+      state
+    };
+  });
 
   return (
     <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -94,19 +97,36 @@ export default function IssuanceProgress({ transactionId, status, card }: Issuan
           scanning={!!transactionId}
           badge={{ label: transactionId ? 'Signing' : 'Submitting', tone: 'progress' }}
         />
-        <div className="relative mx-auto mt-6 h-px w-2/3 overflow-hidden bg-line" aria-hidden>
-          <div className="absolute inset-y-0 left-0 w-2/5 animate-indeterminate bg-azure motion-reduce:hidden" />
-        </div>
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease, delay: 0.3 }}
+          className="mx-auto mt-6 flex w-full max-w-[20rem] flex-col items-center gap-3"
+        >
+          <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-small text-ink-muted">
+            Generating your verifiable credential with
+            <span className="relative inline-block overflow-hidden">
+              <img src="/brand/credissuer-logo.svg" alt="CredIssuer" className="h-5 w-auto" />
+              <span
+                className="pointer-events-none absolute inset-y-0 left-0 w-1/3 animate-shimmer bg-gradient-to-r from-transparent via-white/80 to-transparent motion-reduce:hidden"
+                aria-hidden
+              />
+            </span>
+          </p>
+          <div className="relative h-0.5 w-full overflow-hidden rounded-pill bg-credissuer/15" aria-hidden>
+            <div className="absolute inset-y-0 left-0 w-2/5 animate-indeterminate rounded-pill bg-credissuer motion-reduce:hidden" />
+          </div>
+        </motion.div>
       </motion.div>
 
       <div className="flex flex-col gap-6">
-        <ol className="flex flex-col" aria-label="Issuance progress">
+        <ol className="flex flex-col" aria-label="Issuance progress" aria-live="polite">
           {stages.map((stage, index) => (
-            <li key={stage.title} className="relative flex gap-4 pb-6 last:pb-0">
+            <li key={index} className="relative flex gap-4 pb-6 last:pb-0">
               {index < stages.length - 1 && (
                 <span className="absolute left-3 top-8 h-[calc(100%-2rem)] w-px bg-line-strong" aria-hidden>
                   <motion.span
-                    className="absolute inset-0 origin-top bg-azure"
+                    className="absolute inset-0 origin-top bg-pass"
                     initial={false}
                     animate={{ scaleY: stage.state === 'done' ? 1 : 0 }}
                     transition={{ duration: 0.5, ease }}
@@ -180,7 +200,7 @@ function StageNode({ state }: { state: StageState }) {
       <motion.span
         initial={{ scale: 0.6 }}
         animate={{ scale: 1 }}
-        className="relative z-10 flex h-6 w-6 flex-none items-center justify-center rounded-pill bg-azure text-ink-on-strong"
+        className="relative z-10 flex h-6 w-6 flex-none items-center justify-center rounded-pill bg-pass text-ink-on-strong"
       >
         <Check className="h-3.5 w-3.5" aria-hidden />
       </motion.span>

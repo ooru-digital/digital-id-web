@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import Button from './ui/Button';
+import Callout from './ui/Callout';
 import Field, { inputClass } from './ui/Field';
 import StepFooter from './ui/StepFooter';
 
@@ -123,6 +124,9 @@ export default function PersonalDetailsForm({
 
   return (
     <form onSubmit={handleSubmit} noValidate>
+      <Callout tone="info" title="Coming soon: automatic prefill" className="mb-12">
+        Your details will be fetched from the existing National ID (NID) database, so you won't need to type them in.
+      </Callout>
       {fieldset('Your name', 'As it appears on your official documents.',
         <>
           {textField('givenName', 'Given name', 'e.g. Amara', { autoComplete: 'given-name' })}
