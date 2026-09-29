@@ -18,14 +18,12 @@ const TIPS = [
   'Your Digital ID includes a QR code so it can be verified instantly.'
 ];
 
-// ponytail: backend exposes no per-check status (one POST + status poll), so checks 1-4 tick on a timer.
+// ponytail: backend exposes no per-check status (one POST + status poll), so the earlier checks tick on a timer.
 // The last check never completes here; a real Completed status unmounts this for the success screen.
 // Drive `ticked` from real status fields once the issuer reports them.
 const CHECKS = [
-  { active: 'Verifying document', done: 'Document verified', description: 'Checking your uploaded document.' },
-  { active: 'Matching your face', done: 'Face match successful', description: 'Comparing your selfie with your document photo.' },
   { active: 'Checking NID database', done: 'NID database check successful', description: 'Confirming your record in the National ID database.' },
-  { active: 'Checking for duplicate NRC', done: 'Duplicate NRC check passed', description: 'Making sure this NRC has no other Digital ID.' },
+  { active: 'Matching your face (Mocked)', done: 'Face match successful (Mocked)', description: 'Comparing your selfie with your document photo.' },
   { active: 'Signing and issuing your Digital ID', done: 'Digital ID issued', description: 'Creating your verifiable credential with CredIssuer.' }
 ];
 const CHECK_INTERVAL_MS = 900;
