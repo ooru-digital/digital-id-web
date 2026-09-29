@@ -28,6 +28,15 @@ export interface DigitalIdCredentialData {
   placeOfBirth: string;
 }
 
+// Fields not collected from the applicant; sent with fixed values
+export const MOCKED_DETAILS = {
+  nationality: 'Utopia',
+  placeOfBirth: 'Lusaka',
+  district: 'Central',
+  villageName: 'Munyumbwe',
+  chief: 'Chief Mukuni'
+};
+
 const TD1_LINE_LENGTH = 30;
 
 const toMrzChars = (value: string): string =>
@@ -65,7 +74,7 @@ const toMrzSex = (sex: string): string => {
 
 // ICAO 9303 TD1 (ID card) lines 1 and 2; no expiry date is captured, so it is left as fillers
 export const buildMrzLines = (details: PersonalDetails): { line1: string; line2: string } => {
-  const countryCode = toCountryCode(details.nationality);
+  const countryCode = toCountryCode(MOCKED_DETAILS.nationality);
   const documentNumber = toMrzChars(details.nrcNumber);
 
   let documentField: string;
@@ -132,20 +141,16 @@ export const buildDigitalIdCredentialData = (
   const { line1, line2 } = buildMrzLines(details);
 
   return {
+    ...MOCKED_DETAILS,
     sex: details.sex,
-    chief: details.chief,
     email: details.email,
     photo: [buildPhoto(details.givenName, selfieDataUrl)],
     surName: details.surName,
-    district: details.district,
     givenName: details.givenName,
     nrcNumber: details.nrcNumber,
     mrz_line_1: line1,
     mrz_line_2: line2,
     dateOfBirth: toIsoDateTime(details.dateOfBirth),
-    dateOfIssue: toIsoDateTime(todayIsoDate()),
-    nationality: details.nationality,
-    villageName: details.villageName,
-    placeOfBirth: details.placeOfBirth
+    dateOfIssue: toIsoDateTime(todayIsoDate())
   };
 };

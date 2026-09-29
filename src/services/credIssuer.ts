@@ -30,7 +30,7 @@ export interface IssuanceResponse {
 
 export interface IssuanceStatusResponse {
   status: string;
-  results?: { status: string }[];
+  results?: { status: string; svg_url?: string; credential_id?: string }[];
 }
 
 export class CredIssuerError extends Error {

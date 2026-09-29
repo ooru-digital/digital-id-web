@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
-import { User, Mail, Calendar, Users, AlertCircle, ArrowRight, ArrowLeft, MapPin, Flag, CreditCard, Home, Landmark, Crown, Info } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
+import Button from './ui/Button';
+import Field, { inputClass } from './ui/Field';
+import StepFooter from './ui/StepFooter';
 
 export interface PersonalDetails {
   givenName: string;
@@ -7,18 +10,14 @@ export interface PersonalDetails {
   email: string;
   sex: string;
   dateOfBirth: string;
-  placeOfBirth: string;
-  nationality: string;
   nrcNumber: string;
-  district: string;
-  villageName: string;
-  chief: string;
 }
 
 interface PersonalDetailsFormProps {
   onNext: (details: PersonalDetails) => void;
   onBack?: () => void;
   initialValues?: PersonalDetails;
+  submitLabel?: string;
 }
 
 type FormErrors = Partial<Record<keyof PersonalDetails, string>>;
@@ -29,12 +28,7 @@ const emptyForm: PersonalDetails = {
   email: '',
   sex: '',
   dateOfBirth: '',
-  placeOfBirth: '',
-  nationality: '',
-  nrcNumber: '',
-  district: '',
-  villageName: '',
-  chief: ''
+  nrcNumber: ''
 };
 
 const requiredMessages: Record<keyof PersonalDetails, string> = {
@@ -43,33 +37,35 @@ const requiredMessages: Record<keyof PersonalDetails, string> = {
   email: 'Email is required',
   sex: 'Sex is required',
   dateOfBirth: 'Date of birth is required',
-  placeOfBirth: 'Place of birth is required',
-  nationality: 'Nationality is required',
-  nrcNumber: 'NRC number is required',
-  district: 'District is required',
-  villageName: 'Village name is required',
-  chief: 'Chief is required'
+  nrcNumber: 'NRC number is required'
 };
 
-export default function PersonalDetailsForm({ onNext, onBack, initialValues }: PersonalDetailsFormProps) {
+const validateField = (field: keyof PersonalDetails, value: string) => {
+  if (!value.trim()) return requiredMessages[field];
+  if (field === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) return 'Please enter a valid email address';
+  return undefined;
+};
+
+export default function PersonalDetailsForm({
+  onNext,
+  onBack,
+  initialValues,
+  submitLabel = 'Continue to selfie'
+}: PersonalDetailsFormProps) {
   const [formData, setFormData] = useState<PersonalDetails>(initialValues || emptyForm);
   const [errors, setErrors] = useState<FormErrors>({});
 
   const validateForm = () => {
     const newErrors: FormErrors = {};
-
     (Object.keys(requiredMessages) as (keyof PersonalDetails)[]).forEach((field) => {
-      if (!formData[field].trim()) {
-        newErrors[field] = requiredMessages[field];
-      }
+      newErrors[field] = validateField(field, formData[field]);
     });
 
-    if (!newErrors.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = 'Please enter a valid email address';
-    }
-
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    // Move focus to the first field that needs attention
+    const firstInvalid = (Object.keys(requiredMessages) as (keyof PersonalDetails)[]).find(field => newErrors[field]);
+    if (firstInvalid) document.getElementById(firstInvalid)?.focus();
+    return !firstInvalid;
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -89,171 +85,85 @@ export default function PersonalDetailsForm({ onNext, onBack, initialValues }: P
     }
   };
 
-  const inputClass = (hasError: boolean) =>
-    `w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#5D5FEF] focus:border-[#5D5FEF] transition-all duration-200 text-sm ${
-      hasError ? 'border-red-300 bg-red-50' : 'border-gray-200 hover:border-gray-300'
-    }`;
+  const inputProps = (field: keyof PersonalDetails) => ({
+    id: field,
+    value: formData[field],
+    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => handleInputChange(field, e.target.value),
+    // Check each field as the user leaves it, not only on submit
+    onBlur: (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) =>
+      setErrors(prev => ({ ...prev, [field]: validateField(field, e.target.value) })),
+    'aria-invalid': !!errors[field],
+    'aria-describedby': errors[field] ? `${field}-error` : undefined,
+    className: inputClass(!!errors[field])
+  });
 
-  const renderError = (field: keyof PersonalDetails) =>
-    errors[field] && (
-      <div className="flex items-center space-x-1 text-red-600 text-xs">
-        <AlertCircle className="w-3 h-3" />
-        <span>{errors[field]}</span>
-      </div>
-    );
-
-  const renderTextField = (
+  const textField = (
     field: keyof PersonalDetails,
     label: string,
-    Icon: typeof User,
     placeholder: string,
-    type: 'text' | 'email' = 'text',
-    hint?: string
+    options: { type?: 'text' | 'email'; hint?: string; autoComplete?: string; className?: string } = {}
   ) => (
-    <div className="space-y-1">
-      <label htmlFor={field} className="block text-xs font-semibold text-gray-900">
-        <Icon className="w-3 h-3 inline mr-1 text-[#5D5FEF]" />
-        {label} *
-      </label>
+    <Field id={field} label={label} error={errors[field]} hint={options.hint} className={options.className}>
       <input
-        type={type}
-        id={field}
-        value={formData[field]}
-        onChange={(e) => handleInputChange(field, e.target.value)}
+        type={options.type ?? 'text'}
         placeholder={placeholder}
-        className={inputClass(!!errors[field])}
+        autoComplete={options.autoComplete ?? 'off'}
+        {...inputProps(field)}
       />
-      {errors[field] ? renderError(field) : hint && (
-        <div className="flex items-center space-x-1 text-gray-500 text-xs">
-          <Info className="w-3 h-3 flex-shrink-0 text-[#5D5FEF]" />
-          <span>{hint}</span>
-        </div>
-      )}
-    </div>
+    </Field>
+  );
+
+  const fieldset = (legend: string, description: string, fields: React.ReactNode) => (
+    <fieldset className="mt-12 border-t border-line pt-6 first:mt-0 first:border-t-0 first:pt-0">
+      <legend className="float-left mb-1 w-full text-lead-18">{legend}</legend>
+      <p className="clear-left mb-6 text-small text-ink-muted">{description}</p>
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">{fields}</div>
+    </fieldset>
   );
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-        <div className="p-6 lg:p-8">
-          <div className="text-center mb-6">
-            <div className="flex items-center justify-center space-x-3 mb-3">
-              <div className="inline-flex items-center justify-center w-10 h-10 bg-[#5D5FEF]/10 rounded-lg">
-                <User className="w-5 h-5 text-[#5D5FEF]" />
-              </div>
-            </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-1">
-              Personal Information
-            </h2>
-            <p className="text-sm text-gray-600">
-              Enter your personal details as they should appear on your Digital ID
-            </p>
-          </div>
+    <form onSubmit={handleSubmit} noValidate>
+      {fieldset('Your name', 'As it appears on your official documents.',
+        <>
+          {textField('givenName', 'Given name', 'e.g. Amara', { autoComplete: 'given-name' })}
+          {textField('surName', 'Surname', 'e.g. Banda', { autoComplete: 'family-name' })}
+        </>
+      )}
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Name */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {renderTextField('givenName', 'Given Name', User, 'Enter your given name')}
-              {renderTextField('surName', 'Surname', User, 'Enter your surname')}
-            </div>
+      {fieldset('Birth and sex', 'Printed on the front of your Digital ID.',
+        <>
+          <Field id="dateOfBirth" label="Date of birth" error={errors.dateOfBirth}>
+            <input type="date" max={new Date().toISOString().split('T')[0]} {...inputProps('dateOfBirth')} />
+          </Field>
+          <Field id="sex" label="Sex" error={errors.sex}>
+            <select {...inputProps('sex')}>
+              <option value="">Select sex</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Other">Other</option>
+            </select>
+          </Field>
+        </>
+      )}
 
-            {/* Contact & Sex */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {renderTextField('email', 'Email Address', Mail, 'Enter your email address', 'email')}
+      {fieldset('Contact and registration', 'Your email address and National Registration Card number.',
+        <>
+          {textField('email', 'Email address', 'you@example.com', { type: 'email', autoComplete: 'email' })}
+          {textField('nrcNumber', 'NRC number', 'e.g. NIDUT0003', {
+            hint: 'Each NRC number can be issued only one Digital ID.'
+          })}
+        </>
+      )}
 
-              <div className="space-y-1">
-                <label htmlFor="sex" className="block text-xs font-semibold text-gray-900">
-                  <Users className="w-3 h-3 inline mr-1 text-[#5D5FEF]" />
-                  Sex *
-                </label>
-                <select
-                  id="sex"
-                  value={formData.sex}
-                  onChange={(e) => handleInputChange('sex', e.target.value)}
-                  className={inputClass(!!errors.sex)}
-                >
-                  <option value="">Select sex</option>
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                  <option value="Other">Other</option>
-                </select>
-                {renderError('sex')}
-              </div>
-            </div>
-
-            {/* Birth Details */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label htmlFor="dateOfBirth" className="block text-xs font-semibold text-gray-900">
-                  <Calendar className="w-3 h-3 inline mr-1 text-[#5D5FEF]" />
-                  Date of Birth *
-                </label>
-                <input
-                  type="date"
-                  id="dateOfBirth"
-                  value={formData.dateOfBirth}
-                  onChange={(e) => handleInputChange('dateOfBirth', e.target.value)}
-                  max={new Date().toISOString().split('T')[0]}
-                  className={inputClass(!!errors.dateOfBirth)}
-                />
-                {renderError('dateOfBirth')}
-              </div>
-
-              {renderTextField('placeOfBirth', 'Place of Birth', MapPin, 'e.g., Lusaka')}
-            </div>
-
-            {/* Identity */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {renderTextField('nationality', 'Nationality', Flag, 'e.g., Utopia')}
-              {renderTextField(
-                'nrcNumber',
-                'NRC Number',
-                CreditCard,
-                'Enter a unique NRC number, e.g., NIDUT0003',
-                'text',
-                'Must be unique. Each NRC number can be issued only one Digital ID.'
-              )}
-            </div>
-
-            {/* Residence */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              {renderTextField('district', 'District', Landmark, 'e.g., Central')}
-              {renderTextField('villageName', 'Village Name', Home, 'e.g., Munyumbwe')}
-              {renderTextField('chief', 'Chief', Crown, 'e.g., Chief Mukuni')}
-            </div>
-
-            <div className="bg-gradient-to-r from-[#5D5FEF]/10 to-[#7C3AED]/10 rounded-lg p-4 border border-[#5D5FEF]/20">
-              <h3 className="font-semibold text-[#5D5FEF] mb-1 flex items-center text-sm">
-                <div className="w-1.5 h-1.5 bg-[#5D5FEF] rounded-full mr-2"></div>
-                Privacy Notice
-              </h3>
-              <p className="text-xs text-[#5D5FEF]/80">
-                Your personal information is encrypted and securely stored. We only use this data for identity verification and credential issuance purposes.
-              </p>
-            </div>
-
-            <div className={`flex pt-4 ${onBack ? 'justify-between' : 'justify-end'}`}>
-              {onBack && (
-                <button
-                  type="button"
-                  onClick={onBack}
-                  className="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-all duration-200 text-sm"
-                >
-                  <ArrowLeft className="w-4 h-4 mr-1" />
-                  Back
-                </button>
-              )}
-              <button
-                type="submit"
-                className="inline-flex items-center px-6 py-2 bg-gradient-to-r from-[#5D5FEF] to-[#7C3AED] text-white font-semibold rounded-lg hover:from-[#5D5FEF]/90 hover:to-[#7C3AED]/90 focus:outline-none focus:ring-2 focus:ring-[#5D5FEF] focus:ring-offset-2 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 text-sm"
-              >
-                Continue to Selfie
-                <ArrowRight className="w-4 h-4 ml-1" />
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
+      <StepFooter>
+        {onBack ? (
+          <Button type="button" variant="outline" onClick={onBack}>
+            <ArrowLeft className="h-4 w-4" aria-hidden />
+            Back
+          </Button>
+        ) : <span />}
+        <Button type="submit">{submitLabel}</Button>
+      </StepFooter>
+    </form>
   );
 }

@@ -1,5 +1,10 @@
-import React, { useState } from 'react';
-import { Shield, Mail, Lock, Eye, EyeOff, AlertCircle, ArrowRight, UserPlus } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import Button from './ui/Button';
+import Field, { inputClass } from './ui/Field';
+import Callout from './ui/Callout';
+import IdCardPreview, { mrzNameLine, type IdCardData } from './ui/IdCardPreview';
 
 interface User {
   id: string;
@@ -11,59 +16,69 @@ interface LoginPageProps {
   onLogin: (user: User) => void;
 }
 
+type FormField = 'email' | 'password' | 'confirmPassword' | 'firstName' | 'lastName';
+type FormErrors = Partial<Record<FormField, string>>;
+
+const EMPTY_FORM: Record<FormField, string> = {
+  email: '',
+  password: '',
+  confirmPassword: '',
+  firstName: '',
+  lastName: ''
+};
+
+const SPECIMEN: IdCardData = {
+  givenName: 'Amara',
+  surName: 'Banda',
+  documentNumber: '204816/10/1',
+  dateOfBirth: '14 Mar 1994',
+  nationality: 'Zambian',
+  sex: 'F',
+  mrz: ['IDZMB204816101<<<<<<<<<<<<<<<<', '9403148F<<<<<<<ZMB<<<<<<<<<<<6', mrzNameLine('Banda', 'Amara')]
+};
+
+const FLOW = ['Document', 'Details', 'Selfie', 'Verify'];
+
+const ease = [0.22, 1, 0.36, 1] as const;
+
 export default function LoginPage({ onLogin }: LoginPageProps) {
-  const [isLogin, setIsLogin] = useState(true);
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-    confirmPassword: '',
-    firstName: '',
-    lastName: ''
-  });
+  const [isLogin] = useState(true);
+  const [formData, setFormData] = useState(EMPTY_FORM);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [error, setError] = useState('');
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [authError, setAuthError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [cardStage, setCardStage] = useState(0);
 
-  const handleInputChange = (field: string, value: string) => {
+  // One orchestrated moment on load: the specimen credential assembles itself
+  useEffect(() => {
+    const timers = [1, 2, 3, 4].map(stage => setTimeout(() => setCardStage(stage), 350 + stage * 450));
+    return () => timers.forEach(clearTimeout);
+  }, []);
+
+  const handleInputChange = (field: FormField, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-    if (error) setError('');
+    if (errors[field]) setErrors(prev => ({ ...prev, [field]: undefined }));
+    if (authError) setAuthError('');
   };
 
   const validateForm = () => {
-    if (!formData.email.trim()) {
-      setError('Email is required');
-      return false;
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      setError('Please enter a valid email address');
-      return false;
-    }
-    if (!formData.password.trim()) {
-      setError('Password is required');
-      return false;
-    }
-    if (formData.password.length < 6) {
-      setError('Password must be at least 6 characters long');
-      return false;
-    }
-    
+    const next: FormErrors = {};
+    if (!formData.email.trim()) next.email = 'Email is required';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) next.email = 'Please enter a valid email address';
+
+    if (!formData.password.trim()) next.password = 'Password is required';
+    else if (formData.password.length < 6) next.password = 'Password must be at least 6 characters long';
+
     if (!isLogin) {
-      if (!formData.firstName.trim()) {
-        setError('First name is required');
-        return false;
-      }
-      if (!formData.lastName.trim()) {
-        setError('Last name is required');
-        return false;
-      }
-      if (formData.password !== formData.confirmPassword) {
-        setError('Passwords do not match');
-        return false;
-      }
+      if (!formData.firstName.trim()) next.firstName = 'First name is required';
+      if (!formData.lastName.trim()) next.lastName = 'Last name is required';
+      if (formData.password !== formData.confirmPassword) next.confirmPassword = 'Passwords do not match';
     }
-    
-    return true;
+
+    setErrors(next);
+    return Object.keys(next).length === 0;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -71,283 +86,300 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
     if (!validateForm()) return;
 
     setIsLoading(true);
-    setError('');
+    setAuthError('');
 
     try {
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 1500));
-      
+
       // Mock authentication - in real app, this would be an API call
       if (isLogin) {
-        // Mock login validation
         if (formData.email === 'demo@example.com' && formData.password === 'password') {
-          onLogin({
-            id: '1',
-            name: 'John Doe',
-            email: formData.email
-          });
+          onLogin({ id: '1', name: 'John Doe', email: formData.email });
         } else {
-          setError('Invalid email or password. Try demo@example.com / password');
+          setAuthError('Invalid email or password. Try demo@example.com / password');
         }
       } else {
-        // Mock registration
         onLogin({
           id: Date.now().toString(),
           name: `${formData.firstName} ${formData.lastName}`,
           email: formData.email
         });
       }
-    } catch (err) {
-      setError('An error occurred. Please try again.');
+    } catch {
+      setAuthError('An error occurred. Please try again.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const toggleMode = () => {
-    setIsLogin(!isLogin);
-    setError('');
-    setFormData({
-      email: '',
-      password: '',
-      confirmPassword: '',
-      firstName: '',
-      lastName: ''
-    });
+
+  const fillDemo = () => {
+    setFormData({ ...EMPTY_FORM, email: 'demo@example.com', password: 'password' });
+    setErrors({});
+    setAuthError('');
   };
 
+  const describedBy = (field: FormField) => (errors[field] ? `${field}-error` : undefined);
+
   return (
-    <div className="min-h-screen bg-white">
-      <div className="min-h-screen flex items-center justify-center px-4 sm:px-6 lg:px-8">
-        <div className="max-w-md w-full space-y-8">
-          {/* Header */}
-          <div className="text-center">
-            <div className="flex justify-center mb-6">
-              <div className="w-20 h-20 bg-[#5D5FEF]/10 rounded-2xl flex items-center justify-center">
-                <Shield className="w-10 h-10 text-[#5D5FEF]" />
-              </div>
-            </div>
-            <h2 className="text-4xl font-bold text-gray-900 mb-2">
-              {isLogin ? 'Welcome Back' : 'Create Account'}
-            </h2>
-            <p className="text-xl text-gray-600">
-              {isLogin 
-                ? 'Sign in to access your GovPass ID Card Portal' 
-                : 'Join the GovPass ID Card Portal today'
-              }
+    <div className="grid min-h-screen bg-canvas lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
+      {/* Brand panel */}
+      <aside className="on-strong relative flex flex-col overflow-hidden bg-navy px-6 py-8 text-ink-on-strong sm:px-12 lg:min-h-screen lg:py-12">
+        <div
+          className="pointer-events-none absolute -right-40 -top-40 h-[520px] w-[520px] rounded-full border border-ink-on-strong/10"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute -right-20 -top-20 h-[360px] w-[360px] rounded-full border border-ink-on-strong/10"
+          aria-hidden
+        />
+
+        <img src="/brand/ooru-logo-white.png" alt="Ooru Digital" className="relative h-7 w-auto self-start sm:h-8" />
+
+        <div className="relative mt-8 flex flex-1 flex-col justify-center gap-12 lg:mt-0">
+          <div className="flex max-w-[30rem] flex-col gap-4">
+            <h1 className="text-display-40 lg:text-display-56">Your Digital Identity, Issued Securely</h1>
+            <p className="text-lead-18 text-ink-muted-on-strong">
+              Upload a document, confirm your details and take a selfie. Your verifiable credential goes
+              straight to your wallet.
             </p>
           </div>
 
-          {/* Login Form */}
-          <div className="bg-white rounded-2xl p-8 border border-gray-200 shadow-xl">
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {!isLogin && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label htmlFor="firstName" className="block text-sm font-medium text-gray-700">
-                      First Name
-                    </label>
-                    <input
-                      type="text"
-                      id="firstName"
-                      value={formData.firstName}
-                      onChange={(e) => handleInputChange('firstName', e.target.value)}
-                      placeholder="Enter first name"
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-[#5D5FEF] focus:border-[#5D5FEF] transition-all duration-200"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label htmlFor="lastName" className="block text-sm font-medium text-gray-700">
-                      Last Name
-                    </label>
-                    <input
-                      type="text"
-                      id="lastName"
-                      value={formData.lastName}
-                      onChange={(e) => handleInputChange('lastName', e.target.value)}
-                      placeholder="Enter last name"
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-[#5D5FEF] focus:border-[#5D5FEF] transition-all duration-200"
-                    />
-                  </div>
-                </div>
-              )}
+          <motion.div
+            className="hidden w-full max-w-[26rem] lg:block"
+            initial={{ opacity: 0, y: 24, rotate: -2 }}
+            animate={{ opacity: 1, y: 0, rotate: -2 }}
+            transition={{ duration: 0.7, ease, delay: 0.15 }}
+          >
+            <IdCardPreview
+              data={SPECIMEN}
+              stage={cardStage}
+              badge={{ label: 'Specimen', tone: 'neutral' }}
+            />
+          </motion.div>
 
-              <div className="space-y-2">
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                  Email Address
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Mail className="h-5 w-5 text-gray-400" />
+          <ol className="hidden flex-wrap gap-x-6 gap-y-2 text-small text-ink-muted-on-strong lg:flex" aria-label="How it works">
+            {FLOW.map((label, index) => (
+              <li key={label} className="flex items-center gap-2">
+                <span className="flex h-6 w-6 items-center justify-center rounded-pill border border-ink-muted-on-strong/50 text-caption">
+                  {index + 1}
+                </span>
+                {label}
+              </li>
+            ))}
+          </ol>
+        </div>
+
+        <p className="relative mt-8 hidden text-caption text-ink-muted-on-strong lg:block">
+          Credentials issued with CredIssuer by Ooru Digital
+        </p>
+      </aside>
+
+      {/* Form panel */}
+      <main className="flex items-center justify-center px-6 py-12 sm:px-12">
+        <div className="w-full max-w-[400px]">
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={isLogin ? 'login' : 'register'}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.22, ease }}
+              className="mb-12 flex flex-col gap-2"
+            >
+              <h2 className="text-display-40">{isLogin ? 'Sign In' : 'Create Account'}</h2>
+              <p className="text-body text-ink-muted">
+                {isLogin ? 'Continue to your Ooru Digital ID application.' : 'Register to apply for your Ooru Digital ID.'}
+              </p>
+            </motion.div>
+          </AnimatePresence>
+
+          <motion.form layout onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
+            <AnimatePresence initial={false}>
+              {!isLogin && (
+                <motion.div
+                  key="names"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.28, ease }}
+                  className="-m-1 overflow-hidden p-1"
+                >
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field id="firstName" label="First name" error={errors.firstName}>
+                      <input
+                        id="firstName"
+                        autoComplete="given-name"
+                        value={formData.firstName}
+                        onChange={e => handleInputChange('firstName', e.target.value)}
+                        aria-invalid={!!errors.firstName}
+                        aria-describedby={describedBy('firstName')}
+                        className={inputClass(!!errors.firstName)}
+                      />
+                    </Field>
+                    <Field id="lastName" label="Last name" error={errors.lastName}>
+                      <input
+                        id="lastName"
+                        autoComplete="family-name"
+                        value={formData.lastName}
+                        onChange={e => handleInputChange('lastName', e.target.value)}
+                        aria-invalid={!!errors.lastName}
+                        aria-describedby={describedBy('lastName')}
+                        className={inputClass(!!errors.lastName)}
+                      />
+                    </Field>
                   </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <motion.div layout="position">
+              <Field id="email" label="Email address" error={errors.email}>
+                <div className="relative">
+                  <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" aria-hidden />
                   <input
                     type="email"
                     id="email"
+                    autoComplete="email"
                     value={formData.email}
-                    onChange={(e) => handleInputChange('email', e.target.value)}
-                    placeholder="Enter your email"
-                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-[#5D5FEF] focus:border-[#5D5FEF] transition-all duration-200"
+                    onChange={e => handleInputChange('email', e.target.value)}
+                    placeholder="you@example.com"
+                    aria-invalid={!!errors.email}
+                    aria-describedby={describedBy('email')}
+                    className={`${inputClass(!!errors.email)} pl-10`}
                   />
                 </div>
-              </div>
+              </Field>
+            </motion.div>
 
-              <div className="space-y-2">
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                  Password
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Lock className="h-5 w-5 text-gray-400" />
-                  </div>
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    id="password"
-                    value={formData.password}
-                    onChange={(e) => handleInputChange('password', e.target.value)}
-                    placeholder="Enter your password"
-                    className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-[#5D5FEF] focus:border-[#5D5FEF] transition-all duration-200"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-5 w-5 text-gray-400 hover:text-gray-600 transition-colors" />
-                    ) : (
-                      <Eye className="h-5 w-5 text-gray-400 hover:text-gray-600 transition-colors" />
-                    )}
-                  </button>
-                </div>
-              </div>
+            <motion.div layout="position">
+              <PasswordField
+                id="password"
+                label="Password"
+                value={formData.password}
+                error={errors.password}
+                visible={showPassword}
+                onToggle={() => setShowPassword(v => !v)}
+                onChange={v => handleInputChange('password', v)}
+                autoComplete={isLogin ? 'current-password' : 'new-password'}
+              />
+            </motion.div>
 
+            <AnimatePresence initial={false}>
               {!isLogin && (
-                <div className="space-y-2">
-                  <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
-                    Confirm Password
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <Lock className="h-5 w-5 text-gray-400" />
-                    </div>
-                    <input
-                      type={showConfirmPassword ? 'text' : 'password'}
-                      id="confirmPassword"
-                      value={formData.confirmPassword}
-                      onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
-                      placeholder="Confirm your password"
-                      className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-[#5D5FEF] focus:border-[#5D5FEF] transition-all duration-200"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                    >
-                      {showConfirmPassword ? (
-                        <EyeOff className="h-5 w-5 text-gray-400 hover:text-gray-600 transition-colors" />
-                      ) : (
-                        <Eye className="h-5 w-5 text-gray-400 hover:text-gray-600 transition-colors" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {error && (
-                <div className="flex items-center space-x-2 text-red-600 bg-red-50 p-4 rounded-xl border border-red-200">
-                  <AlertCircle className="w-5 h-5 flex-shrink-0" />
-                  <span className="text-sm">{error}</span>
-                </div>
-              )}
-
-              {isLogin && (
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <input
-                      id="remember-me"
-                      name="remember-me"
-                      type="checkbox"
-                      className="h-4 w-4 text-[#5D5FEF] focus:ring-[#5D5FEF] border-gray-300 rounded"
-                    />
-                    <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">
-                      Remember me
-                    </label>
-                  </div>
-                  <div className="text-sm">
-                    <a href="#" className="font-medium text-[#5D5FEF] hover:text-[#5D5FEF]/80 transition-colors">
-                      Forgot password?
-                    </a>
-                  </div>
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full flex justify-center items-center py-4 px-4 border border-transparent rounded-xl shadow-sm text-sm font-semibold text-white bg-gradient-to-r from-[#5D5FEF] to-[#7C3AED] hover:from-[#5D5FEF]/90 hover:to-[#7C3AED]/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#5D5FEF] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isLoading ? (
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                ) : (
-                  <>
-                    {isLogin ? (
-                      <>
-                        Sign In
-                        <ArrowRight className="w-5 h-5 ml-2" />
-                      </>
-                    ) : (
-                      <>
-                        Create Account
-                        <UserPlus className="w-5 h-5 ml-2" />
-                      </>
-                    )}
-                  </>
-                )}
-              </button>
-            </form>
-
-            <div className="mt-6">
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-300" />
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-white text-gray-500">
-                    {isLogin ? "Don't have an account?" : "Already have an account?"}
-                  </span>
-                </div>
-              </div>
-
-              <div className="mt-6">
-                <button
-                  onClick={toggleMode}
-                  className="w-full flex justify-center py-3 px-4 border border-gray-300 rounded-xl shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#5D5FEF] transition-all duration-200"
+                <motion.div
+                  key="confirm"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.28, ease }}
+                  className="-m-1 overflow-hidden p-1"
                 >
-                  {isLogin ? 'Create new account' : 'Sign in instead'}
-                </button>
-              </div>
-            </div>
-          </div>
+                  <PasswordField
+                    id="confirmPassword"
+                    label="Confirm password"
+                    value={formData.confirmPassword}
+                    error={errors.confirmPassword}
+                    visible={showConfirmPassword}
+                    onToggle={() => setShowConfirmPassword(v => !v)}
+                    onChange={v => handleInputChange('confirmPassword', v)}
+                    autoComplete="new-password"
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-          {/* Demo Credentials */}
-          {isLogin && (
-            <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-              <h3 className="text-sm font-medium text-gray-900 mb-2">Demo Credentials</h3>
-              <div className="text-xs text-gray-600 space-y-1">
-                <p><span className="font-medium">Email:</span> demo@example.com</p>
-                <p><span className="font-medium">Password:</span> password</p>
-              </div>
-            </div>
-          )}
+            {isLogin && (
+              <motion.div layout="position" className="flex items-center justify-between text-small">
+                <label htmlFor="remember-me" className="flex items-center gap-2 text-ink">
+                  <input id="remember-me" type="checkbox" className="h-4 w-4 rounded-[4px] border-line-strong accent-navy" />
+                  Remember me
+                </label>
+                <a href="#" className="font-medium text-azure-ink hover:underline">
+                  Forgot password?
+                </a>
+              </motion.div>
+            )}
 
-          {/* Footer */}
-          <div className="text-center">
-            <p className="text-xs text-gray-500">
-              © 2025 GovPass ID Card Portal. All rights reserved.
+            <AnimatePresence>
+              {authError && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  role="alert"
+                >
+                  <Callout tone="fail" title="Could not sign in">{authError}</Callout>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <motion.div layout="position">
+              <Button type="submit" loading={isLoading} className="w-full">
+                {isLoading ? (isLogin ? 'Signing in' : 'Creating account') : isLogin ? 'Sign in' : 'Create account'}
+              </Button>
+            </motion.div>
+          </motion.form>
+
+          <motion.div layout="position" className="mt-6 flex flex-col gap-6">
+            {isLogin && (
+              <div className="flex items-center justify-between gap-4 rounded-lg bg-sand px-6 py-4">
+                <div className="flex flex-col gap-1">
+                  <p className="text-small font-medium">Demo credentials</p>
+                  <p className="font-mono text-[12px] leading-4 text-ink-muted">demo@example.com / password</p>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={fillDemo}>
+                  Fill in
+                </Button>
+              </div>
+            )}
+
+            <p className="text-center text-caption text-ink-muted">
+              © {new Date().getFullYear()} Ooru Digital Private Limited
             </p>
-          </div>
+          </motion.div>
         </div>
-      </div>
+      </main>
     </div>
+  );
+}
+
+interface PasswordFieldProps {
+  id: FormField;
+  label: string;
+  value: string;
+  error?: string;
+  visible: boolean;
+  autoComplete: string;
+  onToggle: () => void;
+  onChange: (value: string) => void;
+}
+
+function PasswordField({ id, label, value, error, visible, autoComplete, onToggle, onChange }: PasswordFieldProps) {
+  return (
+    <Field id={id} label={label} error={error}>
+      <div className="relative">
+        <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" aria-hidden />
+        <input
+          type={visible ? 'text' : 'password'}
+          id={id}
+          autoComplete={autoComplete}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          aria-invalid={!!error}
+          aria-describedby={error ? `${id}-error` : undefined}
+          className={`${inputClass(!!error)} pl-10 pr-12`}
+        />
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label={visible ? 'Hide password' : 'Show password'}
+          className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-pill text-ink-muted hover:text-ink"
+        >
+          {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+        </button>
+      </div>
+    </Field>
   );
 }

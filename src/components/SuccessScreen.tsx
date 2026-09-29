@@ -1,222 +1,183 @@
-import { CheckCircle, Home, Smartphone, Download, ExternalLink, Star, Award, Shield } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { useState } from 'react';
+import { Check, RotateCw } from 'lucide-react';
+import { buildOfferQrUrl } from '../config/apiConfig';
+import Callout from './ui/Callout';
+import Button from './ui/Button';
+import IdCardPreview, { type IdCardData } from './ui/IdCardPreview';
+import IssuedCard from './ui/IssuedCard';
 
 interface SuccessScreenProps {
   onStartOver: () => void;
+  card?: IdCardData;
+  svgUrl?: string;
+  credentialId?: string;
 }
 
-export default function SuccessScreen({ onStartOver }: SuccessScreenProps) {
+const ease = [0.22, 1, 0.36, 1] as const;
+
+const WALLET_STEPS = [
+  { title: 'Open CredIssuer Wallet', body: 'Launch the app on your phone and unlock it.' },
+  { title: 'Scan this code', body: 'Tap Scan and point your camera at the QR code.' },
+  { title: 'Accept your National ID', body: 'Review the details and accept to save it to your wallet.' }
+];
+
+const BENEFITS = [
+  'Stored securely on your device',
+  'Available offline',
+  'Verified instantly by QR code',
+  'You choose what to share'
+];
+
+export default function SuccessScreen({ onStartOver, card, svgUrl, credentialId }: SuccessScreenProps) {
+  const preview = card && <IdCardPreview data={card} stage={4} badge={{ label: 'Issued', tone: 'pass' }} />;
+
   return (
-    <div className="max-w-4xl mx-auto text-center">
-      <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-        {/* Success Header */}
-        <div className="bg-gradient-to-r from-green-500 to-emerald-600 px-6 py-8 text-white">
-          <div className="flex justify-center mb-4">
-            <div className="relative">
-              <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
-                <CheckCircle className="w-8 h-8 text-white" />
-              </div>
-              <div className="absolute -top-1 -right-1">
-                <div className="w-6 h-6 bg-yellow-400 rounded-full flex items-center justify-center">
-                  <Star className="w-3 h-3 text-yellow-800" />
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <h2 className="text-2xl font-bold mb-2">Digital ID Created Successfully!</h2>
-          <p className="text-green-100">
-            Your digital national ID has been successfully created and is ready for download.
-          </p>
-        </div>
+    <div className="flex flex-col gap-12">
+      <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        {(svgUrl || card) && (
+          <motion.div
+            initial={{ scale: 0.96, y: 8 }}
+            animate={{ scale: 1, y: 0 }}
+            transition={{ duration: 0.6, ease }}
+            className="mx-auto w-full max-w-[28rem]"
+          >
+            {svgUrl ? <IssuedCard svgUrl={svgUrl} fallback={preview} /> : preview}
+          </motion.div>
+        )}
 
-        <div className="p-6 lg:p-8 space-y-6">
-          {/* Status Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-green-50 rounded-lg p-4 border border-green-200">
-              <div className="flex items-center justify-center w-8 h-8 bg-green-600 rounded-lg mb-3 mx-auto">
-                <CheckCircle className="w-4 h-4 text-white" />
-              </div>
-              <h3 className="font-semibold text-green-900 mb-1 text-sm">Identity Verified</h3>
-              <p className="text-xs text-green-700">Your identity has been successfully verified</p>
-            </div>
-            
-            <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-              <div className="flex items-center justify-center w-8 h-8 bg-blue-600 rounded-lg mb-3 mx-auto">
-                <Award className="w-4 h-4 text-white" />
-              </div>
-              <h3 className="font-semibold text-blue-900 mb-1 text-sm">Digital ID Created</h3>
-              <p className="text-xs text-blue-700">Your digital national ID has been generated</p>
-            </div>
-            
-            <div className="bg-[#5D5FEF]/10 rounded-lg p-4 border border-[#5D5FEF]/20">
-              <div className="flex items-center justify-center w-8 h-8 bg-[#5D5FEF] rounded-lg mb-3 mx-auto">
-                <Smartphone className="w-4 h-4 text-white" />
-              </div>
-              <h3 className="font-semibold text-[#5D5FEF] mb-1 text-sm">Ready for Download</h3>
-              <p className="text-xs text-[#5D5FEF]/70">Available in your Wallet</p>
+        <div className="flex flex-col gap-6">
+          <div className="flex items-center gap-4">
+            <svg viewBox="0 0 48 48" className="h-12 w-12 flex-none text-pass" aria-hidden>
+              <motion.circle
+                cx="24" cy="24" r="22" fill="none" stroke="currentColor" strokeWidth="2"
+                initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.6, ease }}
+              />
+              <motion.path
+                d="M15 24.5l6 6 12-13" fill="none" stroke="currentColor" strokeWidth="2.5"
+                strokeLinecap="round" strokeLinejoin="round"
+                initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.4, ease, delay: 0.5 }}
+              />
+            </svg>
+            <div className="flex flex-col gap-1">
+              <p className="text-lead-18 text-pass">Issued</p>
+              <p className="text-small text-ink-muted">Your Digital ID has been signed and sent to your email.</p>
             </div>
           </div>
 
-          {/* Wallet Instructions */}
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
-            <div className="flex items-center justify-center mb-4">
-              <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
-                <Smartphone className="w-6 h-6 text-white" />
-              </div>
-            </div>
-            
-            <h3 className="font-bold text-blue-900 mb-3 text-lg">Download Your Digital National ID</h3>
-            <p className="text-blue-800 mb-4 text-sm">
-              Your digital national ID is now available for download using the Wallet mobile application.
-            </p>
-
-            {/* Download Steps */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-              <div className="bg-white rounded-lg p-4 border border-blue-200">
-                <div className="flex items-start space-x-3">
-                  <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0 text-white text-xs font-bold">
-                    1
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-blue-900 text-sm mb-1">Download Wallet</h4>
-                    <p className="text-xs text-blue-700">Install the Wallet app from your device's app store</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg p-4 border border-blue-200">
-                <div className="flex items-start space-x-3">
-                  <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0 text-white text-xs font-bold">
-                    2
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-blue-900 text-sm mb-1">Open the App</h4>
-                    <p className="text-xs text-blue-700">Launch the Wallet and set it up securely</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg p-4 border border-blue-200">
-                <div className="flex items-start space-x-3">
-                  <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0 text-white text-xs font-bold">
-                    3
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-blue-900 text-sm mb-1">Add Digital ID</h4>
-                    <p className="text-xs text-blue-700">
-                      Click on{' '}
-                      <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-600 text-white font-bold leading-none align-middle">+</span>
-                      {' '}and choose the <span className="font-semibold">Scan &amp; Download Card</span> option to download the VC into your wallet
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg p-4 border border-blue-200">
-                <div className="flex items-start space-x-3">
-                  <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0 text-white text-xs font-bold">
-                    4
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-blue-900 text-sm mb-1">Verify & Use</h4>
-                    <p className="text-xs text-blue-700">Your digital ID is now ready for secure verification</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* App Store Links */}
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <a
-                href="https://apps.apple.com/app/inji-wallet"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center px-4 py-2 bg-black text-white font-medium rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-all duration-200 text-sm"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Download for iOS
-                <ExternalLink className="w-3 h-3 ml-1" />
-              </a>
-              
-              <a
-                href="https://play.google.com/store/apps/details?id=io.mosip.inji"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all duration-200 text-sm"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Download for Android
-                <ExternalLink className="w-3 h-3 ml-1" />
-              </a>
-            </div>
-          </div>
-
-          {/* Features */}
-          <div className="bg-gradient-to-r from-[#5D5FEF]/10 to-[#7C3AED]/10 rounded-lg p-6 border border-[#5D5FEF]/20">
-            <h3 className="font-bold text-[#5D5FEF] mb-4 flex items-center justify-center">
-              <Shield className="w-5 h-5 mr-2" />
-              Why Use the Wallet?
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="flex items-start space-x-2">
-                <div className="w-4 h-4 bg-[#5D5FEF] rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <CheckCircle className="w-2 h-2 text-white" />
-                </div>
-                <div className="text-left">
-                  <p className="font-medium text-[#5D5FEF] text-xs">Secure Storage</p>
-                  <p className="text-xs text-[#5D5FEF]/70">Your credentials are stored securely on your device</p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-2">
-                <div className="w-4 h-4 bg-[#5D5FEF] rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <CheckCircle className="w-2 h-2 text-white" />
-                </div>
-                <div className="text-left">
-                  <p className="font-medium text-[#5D5FEF] text-xs">Offline Access</p>
-                  <p className="text-xs text-[#5D5FEF]/70">Access your digital ID even without internet</p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-2">
-                <div className="w-4 h-4 bg-[#5D5FEF] rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <CheckCircle className="w-2 h-2 text-white" />
-                </div>
-                <div className="text-left">
-                  <p className="font-medium text-[#5D5FEF] text-xs">Easy Verification</p>
-                  <p className="text-xs text-[#5D5FEF]/70">Quick QR code scanning for instant verification</p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-2">
-                <div className="w-4 h-4 bg-[#5D5FEF] rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <CheckCircle className="w-2 h-2 text-white" />
-                </div>
-                <div className="text-left">
-                  <p className="font-medium text-[#5D5FEF] text-xs">Privacy First</p>
-                  <p className="text-xs text-[#5D5FEF]/70">You control what information to share</p>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          {/* Action Button */}
-          <div className="flex justify-center pt-2">
-            <button
-              onClick={onStartOver}
-              className="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-all duration-200 text-sm"
-            >
-              <Home className="w-4 h-4 mr-2" />
-              Register Another ID
-            </button>
-          </div>
-
-          {/* Support Notice */}
-          <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-            <p className="text-xs text-gray-600 text-center">
-              Need help downloading your digital ID? Contact our support team at{' '}
-              <span className="font-medium">support@govpass.gov</span> or visit our help center.
-            </p>
-          </div>
+          <ul className="grid grid-cols-1 gap-3 text-small sm:grid-cols-2">
+            {BENEFITS.map(item => (
+              <li key={item} className="flex items-start gap-2">
+                <Check className="mt-0.5 h-4 w-4 flex-none text-azure" aria-hidden />
+                {item}
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
+
+      <section className="rounded-lg bg-sand p-6 sm:p-12" aria-labelledby="wallet-heading">
+        <div className="mb-12 flex flex-col gap-2">
+          <h3 id="wallet-heading" className="text-display-28">Add It to CredIssuer Wallet</h3>
+          <p className="text-body text-ink-muted">Scan the code with the CredIssuer Wallet app to keep your National ID on your phone.</p>
+        </div>
+
+        <div className="grid items-center gap-12 lg:grid-cols-[auto_minmax(0,1fr)]">
+          <WalletQr credentialId={credentialId} />
+
+          <ol className="flex flex-col gap-6">
+            {WALLET_STEPS.map((step, index) => (
+              <motion.li
+                key={step.title}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, ease, delay: 0.6 + index * 0.08 }}
+                className="flex gap-4"
+              >
+                <span className="flex h-8 w-8 flex-none items-center justify-center rounded-pill border border-line-strong bg-card text-small font-medium">
+                  {index + 1}
+                </span>
+                <div className="flex flex-col gap-1">
+                  <p className="text-body font-medium">{step.title}</p>
+                  <p className="text-small text-ink-muted">{step.body}</p>
+                </div>
+              </motion.li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      <div className="flex flex-col items-center justify-between gap-4 border-t border-line pt-6 sm:flex-row">
+        <p className="text-small text-ink-muted">
+          Need help? Contact{' '}
+          <a href="mailto:support@ooru.io" className="font-medium text-azure-ink hover:underline">support@ooru.io</a>
+        </p>
+        <Button type="button" variant="outline" onClick={onStartOver}>
+          Register another ID
+        </Button>
+      </div>
     </div>
+  );
+}
+
+// Scanner-style corner brackets framing the QR
+const CORNERS = [
+  'left-0 top-0 border-l-2 border-t-2 rounded-tl-lg',
+  'right-0 top-0 border-r-2 border-t-2 rounded-tr-lg',
+  'bottom-0 left-0 border-b-2 border-l-2 rounded-bl-lg',
+  'bottom-0 right-0 border-b-2 border-r-2 rounded-br-lg'
+];
+
+function WalletQr({ credentialId }: { credentialId?: string }) {
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [attempt, setAttempt] = useState(0);
+
+  if (!credentialId || state === 'error') {
+    return (
+      <Callout tone="warn" title="QR code unavailable" className="w-full max-w-[20rem]">
+        <p>Your Digital ID was still sent to your email.</p>
+        {credentialId && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-4"
+            onClick={() => { setState('loading'); setAttempt(a => a + 1); }}
+          >
+            <RotateCw className="h-3.5 w-3.5" aria-hidden />
+            Try again
+          </Button>
+        )}
+      </Callout>
+    );
+  }
+
+  return (
+    <figure className="mx-auto flex flex-col items-center gap-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.5, ease, delay: 0.4 }}
+        className="relative p-4"
+      >
+        {CORNERS.map(c => (
+          <span key={c} className={`absolute h-8 w-8 border-navy ${c}`} aria-hidden />
+        ))}
+        <div className="relative h-60 w-60 overflow-hidden rounded-sm bg-card p-3">
+          {state === 'loading' && <div className="absolute inset-3 animate-pulse rounded bg-line" aria-hidden />}
+          <img
+            key={attempt}
+            src={buildOfferQrUrl(credentialId)}
+            alt="QR code to add your National ID to CredIssuer Wallet"
+            className={`h-full w-full object-contain transition-opacity ${state === 'ready' ? 'opacity-100' : 'opacity-0'}`}
+            onLoad={() => setState('ready')}
+            onError={() => setState('error')}
+          />
+        </div>
+      </motion.div>
+      <figcaption className="max-w-[16rem] text-center text-small text-ink-muted">
+        On this phone? Open this page on another screen to scan it.
+      </figcaption>
+    </figure>
   );
 }

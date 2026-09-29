@@ -27,12 +27,12 @@ export const apiConfig: APIConfig = {
     issuedEndpoint: '/issued',
     statusPollIntervalMs: 3000,
     statusPollTimeoutMs: 5 * 60 * 1000,
-    credentialTemplateId: env.VITE_CREDISSUER_TEMPLATE_ID || 'E7CDFA0094D9',
+    credentialTemplateId: env.VITE_CREDISSUER_TEMPLATE_ID || '',
     modeOfIssuance: 'issue',
     apiToken: env.VITE_CREDISSUER_API_TOKEN || '',
     issuerInfo: {
-      orgCode: env.VITE_CREDISSUER_ORG_CODE || 'INJIC-8W9L7',
-      email: env.VITE_CREDISSUER_ISSUER_EMAIL || 'veyoj51418@beiwoh.com'
+      orgCode: env.VITE_CREDISSUER_ORG_CODE || '',
+      email: env.VITE_CREDISSUER_ISSUER_EMAIL || ''
     }
   }
 };
@@ -53,6 +53,10 @@ export const buildIssuedCredentialsUrl = (transactionId: string): string => {
   const params = new URLSearchParams({ offset: '0', limit: '10' });
   return `${baseUrl}${issuedEndpoint}/${encodeURIComponent(transactionId)}?${params.toString()}`;
 };
+
+// Public endpoint returning a QR image that adds the credential to CredIssuer Wallet
+export const buildOfferQrUrl = (credentialId: string): string =>
+  `https://api.credissuer.com/api/mdl/offer-qr/${encodeURIComponent(credentialId)}`;
 
 export const getCredIssuerHeaders = (): Record<string, string> => ({
   'Authorization': `Bearer ${apiConfig.credIssuer.apiToken}`,

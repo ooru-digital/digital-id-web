@@ -1,7 +1,9 @@
-import { useState } from 'react';
-import { Shield, User, Camera, CheckCircle, Fingerprint, FileText, ScanFace } from 'lucide-react';
-import StepIndicator from './components/StepIndicator';
-import DocumentUpload, { type UploadedDocument } from './components/DocumentUpload';
+import { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, MotionConfig, motion } from 'framer-motion';
+import StepRail from './components/StepRail';
+import { type IdCardData, mrzNameLine } from './components/ui/IdCardPreview';
+import Button from './components/ui/Button';
+import Callout from './components/ui/Callout';
 import PersonalDetailsForm, { type PersonalDetails } from './components/PersonalDetailsForm';
 import SelfieCapture from './components/SelfieCapture';
 import PhotoVerification from './components/PhotoVerification';
@@ -12,17 +14,88 @@ import LoginPage from './components/LoginPage';
 import { apiConfig } from './config/apiConfig';
 import { issueDigitalId, CredIssuerError } from './services/credIssuer';
 import { useIssuanceStatusPolling } from './hooks/useIssuanceStatusPolling';
-import { buildDigitalIdCredentialData } from './utils/digitalIdCredential';
+import { buildDigitalIdCredentialData, buildMrzLines, MOCKED_DETAILS } from './utils/digitalIdCredential';
 
-type Step = 'document' | 'personal' | 'selfie' | 'photoVerification' | 'issuing' | 'success' | 'failed';
+type Step = 'personal' | 'selfie' | 'photoVerification' | 'issuing' | 'success' | 'failed';
 
-const STEP_LABELS = ['Document', 'Details', 'Selfie', 'Verify'];
+const WIZARD_STEPS: Step[] = ['personal', 'selfie', 'photoVerification'];
+const STEP_LABELS = ['Details', 'Selfie', 'Review'];
+const STEP_HINTS = ['Name, birth date, NRC', 'Live photo of your face', 'Check and issue'];
+
+const ease = [0.22, 1, 0.36, 1] as const;
+
+const formatDate = (isoDate: string) =>
+  new Date(`${isoDate}T00:00:00Z`).toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC'
+  });
+
+const toIdCardData = (details: PersonalDetails, selfie?: string): IdCardData => {
+  const { line1, line2 } = buildMrzLines(details);
+  return {
+    givenName: details.givenName,
+    surName: details.surName,
+    documentNumber: details.nrcNumber,
+    dateOfBirth: formatDate(details.dateOfBirth),
+    nationality: MOCKED_DETAILS.nationality,
+    sex: details.sex === 'Male' ? 'M' : details.sex === 'Female' ? 'F' : 'X',
+    mrz: [line1, line2, mrzNameLine(details.surName, details.givenName)],
+    photo: selfie
+  };
+};
+
+// Step content slides in the direction of travel
+const stepVariants = {
+  enter: (direction: number) => ({ opacity: 0, x: direction * 32 }),
+  center: { opacity: 1, x: 0 },
+  exit: (direction: number) => ({ opacity: 0, x: direction * -32 })
+};
 
 interface RegistrationData {
-  document?: UploadedDocument;
   personalDetails?: PersonalDetails;
   selfie?: string;
 }
+
+interface Draft {
+  data: RegistrationData;
+  step: Step;
+  savedAt: number;
+}
+
+// ponytail: draft (details + selfie) sits unencrypted in this browser's localStorage until issue or
+// start over; move to a server-side draft API if applicants use shared devices.
+const draftKey = (email: string) => `ooru-draft:${email}`;
+
+const readDraft = (email: string): Draft | null => {
+  try {
+    const raw = localStorage.getItem(draftKey(email));
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeDraft = (email: string, draft: Draft) => {
+  try {
+    localStorage.setItem(draftKey(email), JSON.stringify(draft));
+    return true;
+  } catch {
+    return false; // storage full or blocked: the wizard still works, it just can't resume
+  }
+};
+
+const removeDraft = (email: string) => {
+  try {
+    localStorage.removeItem(draftKey(email));
+  } catch {
+    // nothing to clean up
+  }
+};
+
+const formatSavedAt = (timestamp: number) =>
+  new Date(timestamp).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 
 interface User {
   id: string;
@@ -30,17 +103,36 @@ interface User {
   email: string;
 }
 
+const USER_STORAGE_KEY = 'digital-id-user';
+
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
-  const [currentStep, setCurrentStep] = useState<Step>('document');
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const stored = localStorage.getItem(USER_STORAGE_KEY);
+      return stored ? (JSON.parse(stored) as User) : null;
+    } catch {
+      return null;
+    }
+  });
+  const isAuthenticated = user !== null;
+  const [currentStep, setCurrentStep] = useState<Step>('personal');
   const [registrationData, setRegistrationData] = useState<RegistrationData>({});
   const [error, setError] = useState('');
   const [transactionId, setTransactionId] = useState<string | null>(null);
+  const [svgUrl, setSvgUrl] = useState<string>();
+  const [credentialId, setCredentialId] = useState<string>();
+  const [savedAt, setSavedAt] = useState<number>();
+  const [resumedAt, setResumedAt] = useState<number>();
+  // Set when the user leaves Review to change something; the edited step then returns straight to Review
+  const [returnToReview, setReturnToReview] = useState(false);
   const issuanceStatus = useIssuanceStatusPolling(
     currentStep === 'issuing' ? transactionId : null,
     {
-      onCompleted: () => {
+      onCompleted: (url, id) => {
+        setSvgUrl(url);
+        setCredentialId(id);
+        if (user) removeDraft(user.email);
+        setSavedAt(undefined);
         setCurrentStep('success');
       },
       onFailed: (message) => {
@@ -52,36 +144,72 @@ function App() {
 
   const resetIssuance = () => {
     setTransactionId(null);
+    setSvgUrl(undefined);
+    setCredentialId(undefined);
   };
+
+  const restoreDraft = (email: string) => {
+    const draft = readDraft(email);
+    if (!draft || !WIZARD_STEPS.includes(draft.step)) return;
+    setRegistrationData(draft.data);
+    setCurrentStep(draft.step);
+    setSavedAt(draft.savedAt);
+    setResumedAt(draft.savedAt);
+  };
+
+  // A session kept from an earlier visit resumes its draft on reload
+  useEffect(() => {
+    if (user) restoreDraft(user.email);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleLogin = (userData: User) => {
+    try {
+      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(userData));
+    } catch {
+      // session just won't survive a reload
+    }
     setUser(userData);
-    setIsAuthenticated(true);
+    restoreDraft(userData.email);
   };
 
+  // Signing out keeps the saved draft so the application can be resumed
   const handleLogout = () => {
+    try {
+      localStorage.removeItem(USER_STORAGE_KEY);
+    } catch {
+      // nothing to clean up
+    }
     setUser(null);
-    setIsAuthenticated(false);
-    setCurrentStep('document');
+    setCurrentStep('personal');
     setRegistrationData({});
     setError('');
+    setSavedAt(undefined);
+    setResumedAt(undefined);
+    setReturnToReview(false);
     resetIssuance();
   };
 
-  const handleDocumentUpload = (document: UploadedDocument) => {
-    setRegistrationData(prev => ({ ...prev, document }));
-    setCurrentStep('personal');
+  const goTo = (step: Step) => {
+    setError('');
+    setResumedAt(undefined);
+    if (step === 'photoVerification') setReturnToReview(false);
+    setCurrentStep(step);
   };
 
   const handlePersonalDetails = (details: PersonalDetails) => {
     setRegistrationData(prev => ({ ...prev, personalDetails: details }));
-    setCurrentStep('selfie');
+    goTo(returnToReview ? 'photoVerification' : 'selfie');
   };
 
   const handleSelfieCapture = (imageData: string) => {
     setRegistrationData(prev => ({ ...prev, selfie: imageData }));
-    setError('');
-    setCurrentStep('photoVerification');
+    goTo('photoVerification');
+  };
+
+  const handleEdit = (step: Step) => {
+    setReturnToReview(true);
+    goTo(step);
   };
 
   const handleIssueDigitalId = async () => {
@@ -117,23 +245,14 @@ function App() {
     }
   };
 
-  const handleBackToDocument = () => {
-    setCurrentStep('document');
-  };
-
-  const handleBackToPersonal = () => {
-    setCurrentStep('personal');
-    setError('');
-  };
-
-  const handleBackToSelfie = () => {
-    setCurrentStep('selfie');
-  };
-
   const handleStartOver = () => {
-    setCurrentStep('document');
+    if (user) removeDraft(user.email);
+    setCurrentStep('personal');
     setRegistrationData({});
     setError('');
+    setSavedAt(undefined);
+    setResumedAt(undefined);
+    setReturnToReview(false);
     resetIssuance();
   };
 
@@ -143,222 +262,215 @@ function App() {
     resetIssuance();
   };
 
-  const getStepNumber = (step: Step) => {
-    switch (step) {
-      case 'document': return 1;
-      case 'personal': return 2;
-      case 'selfie': return 3;
-      case 'photoVerification': return 4;
-      default: return 4;
-    }
-  };
-
-  const getStepIcon = (step: Step) => {
-    switch (step) {
-      case 'document': return FileText;
-      case 'personal': return User;
-      case 'selfie': return Camera;
-      case 'photoVerification': return ScanFace;
-      case 'issuing': return Fingerprint;
-      case 'success': return CheckCircle;
-      case 'failed': return Shield;
-      default: return User;
-    }
+  const handleSelectStep = (index: number) => {
+    if (currentStep === 'photoVerification') setReturnToReview(true);
+    goTo(WIZARD_STEPS[index]);
   };
 
   const getStepTitle = (step: Step) => {
     switch (step) {
-      case 'document': return 'Upload Identity Document';
-      case 'personal': return 'Enter Your Details';
-      case 'selfie': return 'Identity Verification';
-      case 'photoVerification': return 'Photo Verification';
-      case 'issuing': return 'Issuing Your Digital ID';
-      case 'success': return 'Digital ID Created';
-      case 'failed': return 'Registration Failed';
-      default: return 'GovPass Digital ID Registration';
+      case 'personal': return 'Enter your details';
+      case 'selfie': return 'Take a selfie';
+      case 'photoVerification': return 'Review and issue';
+      case 'issuing': return 'Issuing your Digital ID';
+      case 'success': return 'Your Digital ID is ready';
+      case 'failed': return 'Issuance did not complete';
+      default: return 'Ooru Digital ID';
     }
   };
 
   const getStepDescription = (step: Step) => {
     switch (step) {
-      case 'document': return 'Start by uploading any physical identity document that shows your photo';
-      case 'personal': return 'Provide your personal information to create your digital ID';
-      case 'selfie': return 'Take a selfie to complete your identity verification';
-      case 'photoVerification': return 'Review your live photo against your identity document before issuance';
-      case 'issuing': return 'Your details have been submitted and your digital ID is being generated';
-      case 'success': return 'Your digital national ID has been successfully created';
-      case 'failed': return 'We encountered an issue with your registration';
-      default: return 'Get your secure GovPass ID in just 4 simple steps. Fast, secure, and officially recognized.';
+      case 'personal': return 'Enter your details exactly as they should appear on your Digital ID.';
+      case 'selfie': return 'Take a live photo so we can confirm the application is yours.';
+      case 'photoVerification': return 'Check everything before we issue your Digital ID. You can edit any section.';
+      case 'issuing': return 'Your details have been submitted and your Digital ID is being generated.';
+      case 'success': return 'Your Digital ID has been issued and is ready to add to your wallet.';
+      case 'failed': return 'Something went wrong while issuing your Digital ID. You can try again.';
+      default: return '';
     }
   };
 
-  // Show login page if not authenticated
-  if (!isAuthenticated) {
-    return <LoginPage onLogin={handleLogin} />;
-  }
+  const stepIndex = WIZARD_STEPS.indexOf(currentStep);
+  const isWizardStep = stepIndex !== -1;
 
-  const StepIcon = getStepIcon(currentStep);
+  // Direction of travel through the wizard: 1 forward, -1 back
+  const orderIndex = isWizardStep ? stepIndex : WIZARD_STEPS.length;
+  const previousIndex = useRef(orderIndex);
+  const direction = orderIndex >= previousIndex.current ? 1 : -1;
+  useEffect(() => {
+    previousIndex.current = orderIndex;
+  }, [orderIndex]);
+
+  // Scroll to the top of the new step
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [currentStep]);
+
+  // Auto-save completed steps so the application can be resumed after signing out
+  useEffect(() => {
+    if (!user || !isWizardStep || (!registrationData.personalDetails && !registrationData.selfie)) return;
+    const now = Date.now();
+    if (writeDraft(user.email, { data: registrationData, step: currentStep, savedAt: now })) setSavedAt(now);
+  }, [user, isWizardStep, registrationData, currentStep]);
+
+  const { personalDetails, selfie } = registrationData;
+  const card = personalDetails ? toIdCardData(personalDetails, selfie) : undefined;
+  const railCard: IdCardData = card ?? {
+    givenName: '',
+    surName: '',
+    documentNumber: '',
+    dateOfBirth: '',
+    nationality: '',
+    sex: '',
+    mrz: ['', '', ''],
+    photo: selfie
+  };
+  const hasData = [!!personalDetails, !!selfie, true];
+  const railSteps = STEP_LABELS.map((label, index) => ({
+    label,
+    hint: STEP_HINTS[index],
+    summary: [personalDetails && `${personalDetails.givenName} ${personalDetails.surName}`, selfie && 'Photo captured'][index],
+    reachable: hasData.slice(0, index).every(Boolean)
+  }));
+
+  const renderStep = () => {
+    switch (currentStep) {
+      case 'personal':
+        return (
+          <PersonalDetailsForm
+            onNext={handlePersonalDetails}
+            initialValues={personalDetails}
+            submitLabel={returnToReview ? 'Save and return to review' : undefined}
+          />
+        );
+      case 'selfie':
+        return (
+          <SelfieCapture
+            onNext={handleSelfieCapture}
+            onBack={() => goTo('personal')}
+            error={error}
+            initialImage={selfie}
+            submitLabel={returnToReview ? 'Save and return to review' : undefined}
+          />
+        );
+      case 'photoVerification':
+        return (
+          <PhotoVerification
+            details={personalDetails!}
+            selfie={selfie!}
+            card={card!}
+            onEdit={handleEdit}
+            onContinue={handleIssueDigitalId}
+            onBack={() => goTo('selfie')}
+          />
+        );
+      case 'issuing':
+        return <IssuanceProgress transactionId={transactionId} status={issuanceStatus} card={card!} />;
+      case 'success':
+        return <SuccessScreen onStartOver={handleStartOver} card={card} svgUrl={svgUrl} credentialId={credentialId} />;
+      case 'failed':
+        return <FailedScreen error={error} onRetry={handleRetry} onStartOver={handleStartOver} />;
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Compact Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-3">
-            <div className="flex items-center space-x-3">
-              <div className="w-6 h-6 bg-[#5D5FEF] rounded-lg flex items-center justify-center">
-                <Shield className="w-4 h-4 text-white" />
-              </div>
-              <div>
-                <h1 className="text-sm font-bold text-gray-900">GovPass ID Portal</h1>
-                <p className="text-xs text-gray-500">Republic of Digital Nations</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center space-x-3">
-              <div className="flex items-center space-x-2 text-xs text-gray-600">
-                <User className="w-3 h-3" />
-                <span>{user?.name}</span>
-              </div>
-              <button
-                onClick={handleLogout}
-                className="text-xs text-gray-500 hover:text-gray-700 transition-colors px-2 py-1 rounded"
-              >
-                Logout
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Compact Hero Section */}
-      <div className="bg-gradient-to-br from-[#5D5FEF] via-[#7C3AED] to-[#5D5FEF]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="text-center space-y-4">
-            {/* Step Icon */}
-            <div className="flex justify-center">
-              <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
-                <StepIcon className="w-6 h-6 text-white" />
-              </div>
-            </div>
-            
-            {/* Title */}
-            <div className="space-y-2">
-              <h1 className="text-2xl md:text-3xl font-bold text-white">
-                {getStepTitle(currentStep)}
-              </h1>
-              <p className="text-sm text-white/90 max-w-2xl mx-auto">
-                {getStepDescription(currentStep)}
-              </p>
-            </div>
-
-            {/* Features */}
-            {currentStep === 'document' && (
-              <div className="flex flex-wrap justify-center gap-4 text-xs text-white">
-                <div className="flex items-center space-x-1">
-                  <div className="w-1.5 h-1.5 bg-yellow-400 rounded-full"></div>
-                  <span>Secure registration</span>
+    <MotionConfig reducedMotion="user">
+      <AnimatePresence mode="wait">
+        {!isAuthenticated ? (
+          <motion.div key="login" exit={{ opacity: 0 }} transition={{ duration: 0.25 }}>
+            <LoginPage onLogin={handleLogin} />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="app"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.35 }}
+            className="flex min-h-screen flex-col bg-canvas"
+          >
+            <header className="sticky top-0 z-20 border-b border-line bg-canvas/90 backdrop-blur">
+              <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
+                <div className="flex items-center gap-3">
+                  <img src="/brand/ooru-mark-colour.png" alt="" className="h-6 w-auto" />
+                  <span className="text-body font-medium">Ooru Digital ID</span>
                 </div>
-                <div className="flex items-center space-x-1">
-                  <div className="w-1.5 h-1.5 bg-green-400 rounded-full"></div>
-                  <span>Officially recognized</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <div className="w-1.5 h-1.5 bg-blue-400 rounded-full"></div>
-                  <span>Ready in 5 minutes</span>
+                <div className="flex items-center gap-4">
+                  <span className="hidden text-small text-ink-muted sm:inline">{user?.name}</span>
+                  <Button type="button" variant="outline" size="sm" onClick={handleLogout}>
+                    {isWizardStep ? 'Save and exit' : 'Sign out'}
+                  </Button>
                 </div>
               </div>
-            )}
-          </div>
-        </div>
-      </div>
+            </header>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {(currentStep === 'document' ||
-          currentStep === 'personal' ||
-          currentStep === 'selfie' ||
-          currentStep === 'photoVerification') && (
-          <div className="mb-6">
-            <StepIndicator 
-              currentStep={getStepNumber(currentStep)} 
-              totalSteps={STEP_LABELS.length}
-              labels={STEP_LABELS}
-            />
-          </div>
+            <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-12">
+              <div className={isWizardStep ? 'grid gap-12 lg:grid-cols-[280px_minmax(0,1fr)]' : ''}>
+                {isWizardStep && (
+                  <aside className="lg:sticky lg:top-24 lg:self-start">
+                    <StepRail
+                      steps={railSteps}
+                      current={stepIndex}
+                      onSelect={handleSelectStep}
+                      card={railCard}
+                      cardStage={personalDetails ? 4 : selfie ? 1 : 0}
+                      savedAt={savedAt}
+                    />
+                  </aside>
+                )}
+
+                <AnimatePresence mode="wait" custom={direction} initial={false}>
+                  <motion.section
+                    key={currentStep}
+                    custom={direction}
+                    variants={stepVariants}
+                    initial="enter"
+                    animate="center"
+                    exit="exit"
+                    transition={{ duration: 0.28, ease }}
+                    className="min-w-0"
+                    aria-labelledby="step-title"
+                  >
+                    {isWizardStep && resumedAt && (
+                      <Callout title="Welcome back" className="mb-12">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                          <p>We restored the application you saved on {formatSavedAt(resumedAt)}.</p>
+                          <Button type="button" variant="outline" size="sm" onClick={handleStartOver}>
+                            Start over
+                          </Button>
+                        </div>
+                      </Callout>
+                    )}
+
+                    <div className="mb-12 flex max-w-[62ch] flex-col gap-2">
+                      <h1 id="step-title" className="text-display-32">{getStepTitle(currentStep)}</h1>
+                      <p className="text-body text-ink-muted">{getStepDescription(currentStep)}</p>
+                    </div>
+
+                    {isWizardStep ? (
+                      <div className="rounded-lg bg-card p-6 shadow-card sm:p-12">{renderStep()}</div>
+                    ) : (
+                      renderStep()
+                    )}
+                  </motion.section>
+                </AnimatePresence>
+              </div>
+            </main>
+
+            <footer className="border-t border-line">
+              <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-6 py-6 text-caption text-ink-muted sm:flex-row">
+                <p>© {new Date().getFullYear()} Ooru Digital Private Limited</p>
+                <nav className="flex gap-6" aria-label="Legal">
+                  <a href="#" className="hover:text-ink">Privacy</a>
+                  <a href="#" className="hover:text-ink">Terms</a>
+                  <a href="mailto:support@ooru.io" className="hover:text-ink">Support</a>
+                </nav>
+              </div>
+            </footer>
+          </motion.div>
         )}
-
-        {currentStep === 'document' && (
-          <DocumentUpload
-            onNext={handleDocumentUpload}
-            initialValue={registrationData.document}
-          />
-        )}
-
-        {currentStep === 'personal' && (
-          <PersonalDetailsForm 
-            onNext={handlePersonalDetails}
-            onBack={handleBackToDocument}
-            initialValues={registrationData.personalDetails}
-          />
-        )}
-
-        {currentStep === 'selfie' && (
-          <SelfieCapture 
-            onNext={handleSelfieCapture}
-            onBack={handleBackToPersonal}
-            error={error}
-            initialImage={registrationData.selfie}
-          />
-        )}
-
-        {currentStep === 'photoVerification' && (
-          <PhotoVerification
-            document={registrationData.document}
-            selfie={registrationData.selfie}
-            onContinue={handleIssueDigitalId}
-            onBack={handleBackToSelfie}
-          />
-        )}
-
-        {currentStep === 'issuing' && (
-          <IssuanceProgress
-            transactionId={transactionId}
-            status={issuanceStatus}
-          />
-        )}
-
-        {currentStep === 'success' && (
-          <SuccessScreen 
-            onStartOver={handleStartOver}
-          />
-        )}
-
-        {currentStep === 'failed' && (
-          <FailedScreen 
-            error={error}
-            onRetry={handleRetry}
-            onStartOver={handleStartOver}
-          />
-        )}
-      </main>
-
-      {/* Compact Footer */}
-      <footer className="bg-white border-t mt-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex flex-col md:flex-row justify-between items-center space-y-2 md:space-y-0">
-            <div className="text-xs text-gray-500">
-              © 2025 GovPass ID Portal. All rights reserved.
-            </div>
-            <div className="flex space-x-4 text-xs">
-              <a href="#" className="text-gray-500 hover:text-gray-700 transition-colors">Privacy</a>
-              <a href="#" className="text-gray-500 hover:text-gray-700 transition-colors">Terms</a>
-              <a href="#" className="text-gray-500 hover:text-gray-700 transition-colors">Support</a>
-            </div>
-          </div>
-        </div>
-      </footer>
-    </div>
+      </AnimatePresence>
+    </MotionConfig>
   );
 }
 

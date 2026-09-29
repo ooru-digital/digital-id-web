@@ -9,7 +9,7 @@ import {
 const MAX_CONSECUTIVE_ERRORS = 5;
 
 interface PollingCallbacks {
-  onCompleted: () => void;
+  onCompleted: (svgUrl?: string, credentialId?: string) => void;
   onFailed: (message: string) => void;
 }
 
@@ -44,7 +44,7 @@ export function useIssuanceStatusPolling(transactionId: string | null, callbacks
               `Digital ID issuance failed with status "${credential.status}". (Transaction ID: ${transactionId})`
             );
           } else {
-            callbacksRef.current.onCompleted();
+            callbacksRef.current.onCompleted(credential?.svg_url, credential?.credential_id);
           }
           return;
         }
