@@ -1,33 +1,27 @@
-import React, { useState } from 'react';
-import { Shield, User, Camera, CheckCircle } from 'lucide-react';
+import { useState } from 'react';
+import { Shield, User, Camera, CheckCircle, Fingerprint, FileText, ScanFace } from 'lucide-react';
 import StepIndicator from './components/StepIndicator';
-import PersonalDetailsForm from './components/PersonalDetailsForm';
+import DocumentUpload, { type UploadedDocument } from './components/DocumentUpload';
+import PersonalDetailsForm, { type PersonalDetails } from './components/PersonalDetailsForm';
 import SelfieCapture from './components/SelfieCapture';
+import PhotoVerification from './components/PhotoVerification';
+import IssuanceProgress from './components/IssuanceProgress';
 import SuccessScreen from './components/SuccessScreen';
 import FailedScreen from './components/FailedScreen';
 import LoginPage from './components/LoginPage';
-import { buildUserCreationUrl } from './config/apiConfig';
+import { apiConfig } from './config/apiConfig';
+import { issueDigitalId, CredIssuerError } from './services/credIssuer';
+import { useIssuanceStatusPolling } from './hooks/useIssuanceStatusPolling';
+import { buildDigitalIdCredentialData } from './utils/digitalIdCredential';
 
-type Step = 'personal' | 'selfie' | 'success' | 'failed';
+type Step = 'document' | 'personal' | 'selfie' | 'photoVerification' | 'issuing' | 'success' | 'failed';
 
-interface PersonalDetails {
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  gender: string;
-  dateOfBirth: string;
-  nationalId: string;
-}
+const STEP_LABELS = ['Document', 'Details', 'Selfie', 'Verify'];
 
 interface RegistrationData {
+  document?: UploadedDocument;
   personalDetails?: PersonalDetails;
   selfie?: string;
-  userId?: string;
-}
-
-interface UserCreationResponse {
-  message: string;
 }
 
 interface User {
@@ -39,9 +33,26 @@ interface User {
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<User | null>(null);
-  const [currentStep, setCurrentStep] = useState<Step>('personal');
+  const [currentStep, setCurrentStep] = useState<Step>('document');
   const [registrationData, setRegistrationData] = useState<RegistrationData>({});
   const [error, setError] = useState('');
+  const [transactionId, setTransactionId] = useState<string | null>(null);
+  const issuanceStatus = useIssuanceStatusPolling(
+    currentStep === 'issuing' ? transactionId : null,
+    {
+      onCompleted: () => {
+        setCurrentStep('success');
+      },
+      onFailed: (message) => {
+        setError(message);
+        setCurrentStep('failed');
+      }
+    }
+  );
+
+  const resetIssuance = () => {
+    setTransactionId(null);
+  };
 
   const handleLogin = (userData: User) => {
     setUser(userData);
@@ -51,9 +62,15 @@ function App() {
   const handleLogout = () => {
     setUser(null);
     setIsAuthenticated(false);
-    setCurrentStep('personal');
+    setCurrentStep('document');
     setRegistrationData({});
     setError('');
+    resetIssuance();
+  };
+
+  const handleDocumentUpload = (document: UploadedDocument) => {
+    setRegistrationData(prev => ({ ...prev, document }));
+    setCurrentStep('personal');
   };
 
   const handlePersonalDetails = (details: PersonalDetails) => {
@@ -61,131 +78,47 @@ function App() {
     setCurrentStep('selfie');
   };
 
-  // Helper function to remove country code from phone number
-  const removeCountryCode = (phoneNumber: string): string => {
-    // Remove all non-digit characters except +
-    let cleaned = phoneNumber.replace(/[^\d+]/g, '');
-    
-    // If it starts with +, remove the + and country code
-    if (cleaned.startsWith('+')) {
-      const withoutPlus = cleaned.substring(1);
-      
-      // Common country codes and their lengths
-      const countryCodes = [
-        { code: '91', length: 2 },   // India
-        { code: '1', length: 1 },    // US/Canada
-        { code: '44', length: 2 },   // UK
-        { code: '86', length: 2 },   // China
-        { code: '81', length: 2 },   // Japan
-        { code: '49', length: 2 },   // Germany
-        { code: '33', length: 2 },   // France
-        { code: '39', length: 2 },   // Italy
-        { code: '7', length: 1 },    // Russia
-        { code: '55', length: 2 },   // Brazil
-      ];
-      
-      // Try to match known country codes
-      for (const { code, length } of countryCodes) {
-        if (withoutPlus.startsWith(code)) {
-          const remainingNumber = withoutPlus.substring(length);
-          // Return the number without country code if it looks like a valid phone number
-          if (remainingNumber.length >= 10) {
-            return remainingNumber;
-          }
-        }
-      }
-      
-      // If no known country code matched, assume it's a 1-3 digit country code
-      // and take the last 10 digits as the phone number
-      if (withoutPlus.length > 10) {
-        return withoutPlus.substring(withoutPlus.length - 10);
-      }
-      
-      return withoutPlus;
-    }
-    
-    // If it doesn't start with +, check if it has a country code prefix
-    if (cleaned.startsWith('91') && cleaned.length === 12) {
-      // Indian number with country code (91XXXXXXXXXX)
-      return cleaned.substring(2);
-    }
-    
-    if (cleaned.startsWith('1') && cleaned.length === 11) {
-      // US/Canada number with country code (1XXXXXXXXXX)
-      return cleaned.substring(1);
-    }
-    
-    // For other cases, return as is (assuming it's already in national format)
-    return cleaned;
-  };
-
-  const handleSelfieCapture = async (imageData: string) => {
+  const handleSelfieCapture = (imageData: string) => {
     setRegistrationData(prev => ({ ...prev, selfie: imageData }));
     setError('');
+    setCurrentStep('photoVerification');
+  };
+
+  const handleIssueDigitalId = async () => {
+    setError('');
+    resetIssuance();
+    setCurrentStep('issuing');
 
     try {
       const personalDetails = registrationData.personalDetails!;
-      
-      // Remove country code from phone number before sending to API
-      const phoneWithoutCountryCode = removeCountryCode(personalDetails.phone);
-      
-      console.log('Original phone:', personalDetails.phone);
-      console.log('Phone without country code:', phoneWithoutCountryCode);
-      
-      const url = buildUserCreationUrl();
+      const imageData = registrationData.selfie!;
+      const { credentialTemplateId, issuerInfo } = apiConfig.credIssuer;
 
-      // Prepare the user creation payload
-      const payload = {
-        first_name: personalDetails.firstName,
-        last_name: personalDetails.lastName,
-        email: personalDetails.email,
-        phone_number: phoneWithoutCountryCode,
-        gender: personalDetails.gender,
-        date_of_birth: personalDetails.dateOfBirth,
-        national_id_number: personalDetails.nationalId,
-        photo: imageData
-      };
-
-      console.log('User creation payload:', JSON.stringify(payload, null, 2));
-
-      // Call the User Creation API
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
+      // Call the CredIssuer Digital ID issuance API; status is then polled by transaction ID
+      const response = await issueDigitalId({
+        issuer_info: {
+          org_code: issuerInfo.orgCode,
+          email: issuerInfo.email
         },
-        body: JSON.stringify(payload)
+        issuer_credential_template_id: credentialTemplateId,
+        credential_data: [buildDigitalIdCredentialData(personalDetails, imageData)]
       });
 
-      if (response.status === 201) {
-        const responseData: UserCreationResponse = await response.json();
-        console.log('User creation response:', responseData);
-        
-        // 201 status means successful creation
-        setCurrentStep('success');
-      } else {
-        // Handle error responses
-        let errorMessage = `Registration failed. Please try again. (Error: ${response.status})`;
-        
-        try {
-          const errorData = await response.json();
-          if (errorData.message) {
-            errorMessage = errorData.message;
-          }
-        } catch (e) {
-          // If JSON parsing fails, use the default error message
-          console.error('Failed to parse error response:', e);
-        }
-        
-        console.error('User creation API error:', response.status, errorMessage);
-        setError(errorMessage);
-        setCurrentStep('failed');
-      }
+      console.log('Digital ID issuance response:', response);
+      setTransactionId(response.transaction_id);
     } catch (error) {
-      console.error('API call failed:', error);
-      setError('Network error. Please check your connection and try again.');
+      console.error('Digital ID issuance API error:', error);
+      setError(
+        error instanceof CredIssuerError
+          ? error.message
+          : 'Network error. Please check your connection and try again.'
+      );
       setCurrentStep('failed');
     }
+  };
+
+  const handleBackToDocument = () => {
+    setCurrentStep('document');
   };
 
   const handleBackToPersonal = () => {
@@ -193,31 +126,40 @@ function App() {
     setError('');
   };
 
+  const handleBackToSelfie = () => {
+    setCurrentStep('selfie');
+  };
+
   const handleStartOver = () => {
-    setCurrentStep('personal');
+    setCurrentStep('document');
     setRegistrationData({});
     setError('');
+    resetIssuance();
   };
 
   const handleRetry = () => {
-    setCurrentStep('selfie');
+    setCurrentStep('photoVerification');
     setError('');
+    resetIssuance();
   };
 
   const getStepNumber = (step: Step) => {
     switch (step) {
-      case 'personal': return 1;
-      case 'selfie': return 2;
-      case 'success': return 2;
-      case 'failed': return 2;
-      default: return 1;
+      case 'document': return 1;
+      case 'personal': return 2;
+      case 'selfie': return 3;
+      case 'photoVerification': return 4;
+      default: return 4;
     }
   };
 
   const getStepIcon = (step: Step) => {
     switch (step) {
+      case 'document': return FileText;
       case 'personal': return User;
       case 'selfie': return Camera;
+      case 'photoVerification': return ScanFace;
+      case 'issuing': return Fingerprint;
       case 'success': return CheckCircle;
       case 'failed': return Shield;
       default: return User;
@@ -226,8 +168,11 @@ function App() {
 
   const getStepTitle = (step: Step) => {
     switch (step) {
+      case 'document': return 'Upload Identity Document';
       case 'personal': return 'Enter Your Details';
       case 'selfie': return 'Identity Verification';
+      case 'photoVerification': return 'Photo Verification';
+      case 'issuing': return 'Issuing Your Digital ID';
       case 'success': return 'Digital ID Created';
       case 'failed': return 'Registration Failed';
       default: return 'GovPass Digital ID Registration';
@@ -236,11 +181,14 @@ function App() {
 
   const getStepDescription = (step: Step) => {
     switch (step) {
+      case 'document': return 'Start by uploading any physical identity document that shows your photo';
       case 'personal': return 'Provide your personal information to create your digital ID';
       case 'selfie': return 'Take a selfie to complete your identity verification';
+      case 'photoVerification': return 'Review your live photo against your identity document before issuance';
+      case 'issuing': return 'Your details have been submitted and your digital ID is being generated';
       case 'success': return 'Your digital national ID has been successfully created';
       case 'failed': return 'We encountered an issue with your registration';
-      default: return 'Get your secure GovPass ID in just 2 simple steps. Fast, secure, and officially recognized.';
+      default: return 'Get your secure GovPass ID in just 4 simple steps. Fast, secure, and officially recognized.';
     }
   };
 
@@ -305,7 +253,7 @@ function App() {
             </div>
 
             {/* Features */}
-            {currentStep === 'personal' && (
+            {currentStep === 'document' && (
               <div className="flex flex-wrap justify-center gap-4 text-xs text-white">
                 <div className="flex items-center space-x-1">
                   <div className="w-1.5 h-1.5 bg-yellow-400 rounded-full"></div>
@@ -327,18 +275,30 @@ function App() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {currentStep !== 'success' && currentStep !== 'failed' && (
+        {(currentStep === 'document' ||
+          currentStep === 'personal' ||
+          currentStep === 'selfie' ||
+          currentStep === 'photoVerification') && (
           <div className="mb-6">
             <StepIndicator 
               currentStep={getStepNumber(currentStep)} 
-              totalSteps={2} 
+              totalSteps={STEP_LABELS.length}
+              labels={STEP_LABELS}
             />
           </div>
+        )}
+
+        {currentStep === 'document' && (
+          <DocumentUpload
+            onNext={handleDocumentUpload}
+            initialValue={registrationData.document}
+          />
         )}
 
         {currentStep === 'personal' && (
           <PersonalDetailsForm 
             onNext={handlePersonalDetails}
+            onBack={handleBackToDocument}
             initialValues={registrationData.personalDetails}
           />
         )}
@@ -348,6 +308,23 @@ function App() {
             onNext={handleSelfieCapture}
             onBack={handleBackToPersonal}
             error={error}
+            initialImage={registrationData.selfie}
+          />
+        )}
+
+        {currentStep === 'photoVerification' && (
+          <PhotoVerification
+            document={registrationData.document}
+            selfie={registrationData.selfie}
+            onContinue={handleIssueDigitalId}
+            onBack={handleBackToSelfie}
+          />
+        )}
+
+        {currentStep === 'issuing' && (
+          <IssuanceProgress
+            transactionId={transactionId}
+            status={issuanceStatus}
           />
         )}
 

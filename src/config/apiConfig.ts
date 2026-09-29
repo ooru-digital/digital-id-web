@@ -1,20 +1,64 @@
 // Centralized API Configuration
 export interface APIConfig {
-  userCreation: {
+  credIssuer: {
+    // Relative path: proxied to https://api.credissuer.com by nginx (prod) and Vite (dev)
     baseUrl: string;
-    endpoint: string;
+    issueEndpoint: string;
+    issuedEndpoint: string;
+    statusPollIntervalMs: number;
+    statusPollTimeoutMs: number;
+    credentialTemplateId: string;
+    modeOfIssuance: string;
+    apiToken: string;
+    issuerInfo: {
+      orgCode: string;
+      email: string;
+    };
   };
 }
 
+const env = import.meta.env;
+
 // Production API Configuration
 export const apiConfig: APIConfig = {
-  userCreation: {
-    baseUrl: 'https://id.assembly.govstack.global',
-    endpoint: '/api/users/create'
+  credIssuer: {
+    baseUrl: '/api/credentials',
+    issueEndpoint: '/issue/client/bulk',
+    issuedEndpoint: '/issued',
+    statusPollIntervalMs: 3000,
+    statusPollTimeoutMs: 5 * 60 * 1000,
+    credentialTemplateId: env.VITE_CREDISSUER_TEMPLATE_ID || 'E7CDFA0094D9',
+    modeOfIssuance: 'issue',
+    apiToken: env.VITE_CREDISSUER_API_TOKEN || '',
+    issuerInfo: {
+      orgCode: env.VITE_CREDISSUER_ORG_CODE || 'INJIC-8W9L7',
+      email: env.VITE_CREDISSUER_ISSUER_EMAIL || 'veyoj51418@beiwoh.com'
+    }
   }
 };
 
-// Helper function to build user creation URL
-export const buildUserCreationUrl = (): string => {
-  return apiConfig.userCreation.baseUrl + apiConfig.userCreation.endpoint;
+// Helper function to build the Digital ID issuance URL
+export const buildCredentialIssueUrl = (): string => {
+  const { baseUrl, issueEndpoint, credentialTemplateId, modeOfIssuance } = apiConfig.credIssuer;
+  const params = new URLSearchParams({
+    credential_template: credentialTemplateId,
+    mode_of_issuance: modeOfIssuance
+  });
+  return `${baseUrl}${issueEndpoint}?${params.toString()}`;
 };
+
+// Helper function to build the issuance status URL for a transaction
+export const buildIssuedCredentialsUrl = (transactionId: string): string => {
+  const { baseUrl, issuedEndpoint } = apiConfig.credIssuer;
+  const params = new URLSearchParams({ offset: '0', limit: '10' });
+  return `${baseUrl}${issuedEndpoint}/${encodeURIComponent(transactionId)}?${params.toString()}`;
+};
+
+export const getCredIssuerHeaders = (): Record<string, string> => ({
+  'Authorization': `Bearer ${apiConfig.credIssuer.apiToken}`,
+  'Content-Type': 'application/json'
+});
+
+export const getCredIssuerStatusHeaders = (): Record<string, string> => ({
+  'Authorization': `Bearer ${apiConfig.credIssuer.apiToken}`
+});

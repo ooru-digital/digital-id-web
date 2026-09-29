@@ -1,5 +1,4 @@
-import React from 'react';
-import { CheckCircle, Home, Smartphone, Download, QrCode, ExternalLink, Star, Award, Shield } from 'lucide-react';
+import { CheckCircle, Home, Smartphone, Download, ExternalLink, Star, Award, Shield } from 'lucide-react';
 
 interface SuccessScreenProps {
   onStartOver: () => void;
@@ -54,11 +53,11 @@ export default function SuccessScreen({ onStartOver }: SuccessScreenProps) {
                 <Smartphone className="w-4 h-4 text-white" />
               </div>
               <h3 className="font-semibold text-[#5D5FEF] mb-1 text-sm">Ready for Download</h3>
-              <p className="text-xs text-[#5D5FEF]/70">Available in Inji Wallet</p>
+              <p className="text-xs text-[#5D5FEF]/70">Available in your Wallet</p>
             </div>
           </div>
 
-          {/* Inji Wallet Instructions */}
+          {/* Wallet Instructions */}
           <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
             <div className="flex items-center justify-center mb-4">
               <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
@@ -68,7 +67,7 @@ export default function SuccessScreen({ onStartOver }: SuccessScreenProps) {
             
             <h3 className="font-bold text-blue-900 mb-3 text-lg">Download Your Digital National ID</h3>
             <p className="text-blue-800 mb-4 text-sm">
-              Your digital national ID is now available for download using the Inji Wallet mobile application.
+              Your digital national ID is now available for download using the Wallet mobile application.
             </p>
 
             {/* Download Steps */}
@@ -79,8 +78,8 @@ export default function SuccessScreen({ onStartOver }: SuccessScreenProps) {
                     1
                   </div>
                   <div>
-                    <h4 className="font-semibold text-blue-900 text-sm mb-1">Download Inji Wallet</h4>
-                    <p className="text-xs text-blue-700">Install the Inji Wallet app from your device's app store</p>
+                    <h4 className="font-semibold text-blue-900 text-sm mb-1">Download Wallet</h4>
+                    <p className="text-xs text-blue-700">Install the Wallet app from your device's app store</p>
                   </div>
                 </div>
               </div>
@@ -92,7 +91,7 @@ export default function SuccessScreen({ onStartOver }: SuccessScreenProps) {
                   </div>
                   <div>
                     <h4 className="font-semibold text-blue-900 text-sm mb-1">Open the App</h4>
-                    <p className="text-xs text-blue-700">Launch Inji Wallet and set up your secure wallet</p>
+                    <p className="text-xs text-blue-700">Launch the Wallet and set it up securely</p>
                   </div>
                 </div>
               </div>
@@ -104,7 +103,11 @@ export default function SuccessScreen({ onStartOver }: SuccessScreenProps) {
                   </div>
                   <div>
                     <h4 className="font-semibold text-blue-900 text-sm mb-1">Add Digital ID</h4>
-                    <p className="text-xs text-blue-700">Use the "Add Credential" feature to download your digital national ID</p>
+                    <p className="text-xs text-blue-700">
+                      Click on{' '}
+                      <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-600 text-white font-bold leading-none align-middle">+</span>
+                      {' '}and choose the <span className="font-semibold">Scan &amp; Download Card</span> option to download the VC into your wallet
+                    </p>
                   </div>
                 </div>
               </div>
@@ -152,7 +155,7 @@ export default function SuccessScreen({ onStartOver }: SuccessScreenProps) {
           <div className="bg-gradient-to-r from-[#5D5FEF]/10 to-[#7C3AED]/10 rounded-lg p-6 border border-[#5D5FEF]/20">
             <h3 className="font-bold text-[#5D5FEF] mb-4 flex items-center justify-center">
               <Shield className="w-5 h-5 mr-2" />
-              Why Use Inji Wallet?
+              Why Use the Wallet?
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="flex items-start space-x-2">

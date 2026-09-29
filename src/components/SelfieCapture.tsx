@@ -5,11 +5,12 @@ interface SelfieCaptureProps {
   onNext: (imageData: string) => void;
   onBack: () => void;
   error?: string;
+  initialImage?: string;
 }
 
-export default function SelfieCapture({ onNext, onBack, error }: SelfieCaptureProps) {
+export default function SelfieCapture({ onNext, onBack, error, initialImage }: SelfieCaptureProps) {
   const [isStreaming, setIsStreaming] = useState(false);
-  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [capturedImage, setCapturedImage] = useState<string | null>(initialImage || null);
   const [localError, setLocalError] = useState('');
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -207,7 +208,7 @@ export default function SelfieCapture({ onNext, onBack, error }: SelfieCapturePr
               className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-[#5D5FEF] to-[#7C3AED] text-white font-semibold rounded-lg hover:from-[#5D5FEF]/90 hover:to-[#7C3AED]/90 focus:outline-none focus:ring-2 focus:ring-[#5D5FEF] focus:ring-offset-2 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none text-sm"
             >
               <Check className="w-4 h-4 mr-2" />
-              Complete Registration
+              Continue to Photo Verification
             </button>
           </div>
         </div>
