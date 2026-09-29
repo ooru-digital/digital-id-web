@@ -1,11 +1,11 @@
 import { motion } from 'framer-motion';
 import { useState } from 'react';
-import { Check, RotateCw } from 'lucide-react';
+import { Check, Download, RotateCw } from 'lucide-react';
 import { buildOfferQrUrl } from '../config/apiConfig';
 import Callout from './ui/Callout';
 import Button from './ui/Button';
 import IdCardPreview, { type IdCardData } from './ui/IdCardPreview';
-import IssuedCard from './ui/IssuedCard';
+import IssuedCard, { downloadCardPdf } from './ui/IssuedCard';
 
 interface SuccessScreenProps {
   onStartOver: () => void;
@@ -62,6 +62,7 @@ export default function SuccessScreen({ onStartOver, card, svgUrl, credentialId 
             <div className="flex flex-col gap-1">
               <p className="text-lead-18 text-pass">Issued</p>
               <p className="text-small text-ink-muted">Your Digital ID has been signed and sent to your email.</p>
+              <p className="text-small text-ink-muted">QR contains face biometric data. Can be used for face authentication offline.</p>
             </div>
           </div>
 
@@ -86,6 +87,13 @@ export default function SuccessScreen({ onStartOver, card, svgUrl, credentialId 
               </li>
             ))}
           </ul>
+
+          {svgUrl && (
+            <Button type="button" className="self-start" onClick={() => downloadCardPdf(svgUrl)}>
+              <Download className="h-4 w-4" aria-hidden />
+              Download card (PDF)
+            </Button>
+          )}
         </div>
       </div>
 

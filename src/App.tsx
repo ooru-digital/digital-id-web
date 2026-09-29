@@ -4,7 +4,7 @@ import StepRail from './components/StepRail';
 import { type IdCardData, mrzNameLine } from './components/ui/IdCardPreview';
 import Button from './components/ui/Button';
 import Callout from './components/ui/Callout';
-import PersonalDetailsForm, { type PersonalDetails } from './components/PersonalDetailsForm';
+import PersonalDetailsForm, { emptyForm, type PersonalDetails } from './components/PersonalDetailsForm';
 import SelfieCapture from './components/SelfieCapture';
 import PhotoVerification from './components/PhotoVerification';
 import IssuanceProgress from './components/IssuanceProgress';
@@ -25,7 +25,7 @@ const STEP_HINTS = ['Name, birth date, NRC', 'Live photo of your face', 'Check a
 const ease = [0.22, 1, 0.36, 1] as const;
 
 const formatDate = (isoDate: string) =>
-  new Date(`${isoDate}T00:00:00Z`).toLocaleDateString('en-GB', {
+  isoDate && new Date(`${isoDate}T00:00:00Z`).toLocaleDateString('en-GB', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
@@ -40,7 +40,7 @@ const toIdCardData = (details: PersonalDetails, selfie?: string): IdCardData => 
     documentNumber: details.nrcNumber,
     dateOfBirth: formatDate(details.dateOfBirth),
     nationality: MOCKED_DETAILS.nationality,
-    sex: details.sex === 'Male' ? 'M' : details.sex === 'Female' ? 'F' : 'X',
+    sex: details.sex === 'Male' ? 'M' : details.sex === 'Female' ? 'F' : details.sex ? 'X' : '',
     mrz: [line1, line2, mrzNameLine(details.surName, details.givenName)],
     photo: selfie
   };
@@ -117,6 +117,8 @@ function App() {
   const isAuthenticated = user !== null;
   const [currentStep, setCurrentStep] = useState<Step>('personal');
   const [registrationData, setRegistrationData] = useState<RegistrationData>({});
+  // Unsaved values from the details form, shown live on the rail card
+  const [draftDetails, setDraftDetails] = useState<PersonalDetails>();
   const [error, setError] = useState('');
   const [transactionId, setTransactionId] = useState<string | null>(null);
   const [svgUrl, setSvgUrl] = useState<string>();
@@ -316,16 +318,10 @@ function App() {
 
   const { personalDetails, selfie } = registrationData;
   const card = personalDetails ? toIdCardData(personalDetails, selfie) : undefined;
-  const railCard: IdCardData = card ?? {
-    givenName: '',
-    surName: '',
-    documentNumber: '',
-    dateOfBirth: '',
-    nationality: '',
-    sex: '',
-    mrz: ['', '', ''],
-    photo: selfie
-  };
+  const railCard = toIdCardData(
+    (currentStep === 'personal' ? draftDetails : personalDetails) ?? personalDetails ?? emptyForm,
+    selfie
+  );
   const hasData = [!!personalDetails, !!selfie, true];
   const railSteps = STEP_LABELS.map((label, index) => ({
     label,
@@ -340,6 +336,7 @@ function App() {
         return (
           <PersonalDetailsForm
             onNext={handlePersonalDetails}
+            onChange={setDraftDetails}
             initialValues={personalDetails}
             submitLabel={returnToReview ? 'Save and return to review' : undefined}
           />
@@ -413,7 +410,6 @@ function App() {
                       current={stepIndex}
                       onSelect={handleSelectStep}
                       card={railCard}
-                      cardStage={personalDetails ? 4 : selfie ? 1 : 0}
                       savedAt={savedAt}
                     />
                   </aside>
@@ -442,13 +438,13 @@ function App() {
                       </Callout>
                     )}
 
-                    <div className="mb-12 flex max-w-[62ch] flex-col gap-2">
+                    <div className="mb-6 flex max-w-[62ch] flex-col gap-2">
                       <h1 id="step-title" className="text-display-32">{getStepTitle(currentStep)}</h1>
                       <p className="text-body text-ink-muted">{getStepDescription(currentStep)}</p>
                     </div>
 
                     {isWizardStep ? (
-                      <div className="rounded-lg bg-card p-6 shadow-card sm:p-12">{renderStep()}</div>
+                      <div className="rounded-lg bg-card p-6 shadow-card sm:p-8">{renderStep()}</div>
                     ) : (
                       renderStep()
                     )}

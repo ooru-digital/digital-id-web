@@ -1,9 +1,12 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Camera, RotateCcw, Check, ArrowLeft, AlertCircle } from 'lucide-react';
+import { Camera, RotateCcw, Check, ArrowLeft, AlertCircle, Loader2 } from 'lucide-react';
 import Button from './ui/Button';
 import Callout from './ui/Callout';
 import StepFooter from './ui/StepFooter';
+
+// MediaPipe is only needed on this step, so it loads in its own chunk
+const loadBackgroundRemoval = () => import('../utils/removeBackground');
 
 interface SelfieCaptureProps {
   onNext: (imageData: string) => void;
@@ -25,6 +28,7 @@ export default function SelfieCapture({
   const [localError, setLocalError] = useState('');
   const [flashKey, setFlashKey] = useState(0);
   const [missingPhoto, setMissingPhoto] = useState(false);
+  const [removingBackground, setRemovingBackground] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -32,6 +36,7 @@ export default function SelfieCapture({
   const startCamera = useCallback(async () => {
     try {
       setLocalError('');
+      loadBackgroundRemoval().then(m => m.preloadSegmenter()).catch(() => {}); // warm up while the user frames the shot
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           width: { ideal: 1280 },
@@ -59,7 +64,7 @@ export default function SelfieCapture({
     setIsStreaming(false);
   }, []);
 
-  const capturePhoto = useCallback(() => {
+  const capturePhoto = useCallback(async () => {
     if (videoRef.current && canvasRef.current) {
       const canvas = canvasRef.current;
       const video = videoRef.current;
@@ -70,11 +75,21 @@ export default function SelfieCapture({
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.drawImage(video, 0, 0);
-        const imageData = canvas.toDataURL('image/jpeg', 0.8);
-        setCapturedImage(imageData);
+        setCapturedImage(canvas.toDataURL('image/jpeg', 0.8));
         setMissingPhoto(false);
         setFlashKey(k => k + 1);
         stopCamera();
+
+        // Swap in the white-background version; if segmentation fails the original photo stays
+        setRemovingBackground(true);
+        try {
+          await (await loadBackgroundRemoval()).removeBackground(canvas);
+          setCapturedImage(canvas.toDataURL('image/jpeg', 0.8));
+        } catch (err) {
+          console.warn('Background removal skipped:', err);
+        } finally {
+          setRemovingBackground(false);
+        }
       }
     }
   }, [stopCamera]);
@@ -85,6 +100,7 @@ export default function SelfieCapture({
   }, [startCamera]);
 
   const handleSubmit = () => {
+    if (removingBackground) return;
     if (capturedImage) {
       onNext(capturedImage);
     } else {
@@ -165,7 +181,24 @@ export default function SelfieCapture({
           </div>
         )}
 
-        {capturedImage && (
+        <AnimatePresence>
+          {removingBackground && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 flex items-center justify-center bg-navy/40"
+              role="status"
+            >
+              <span className="flex items-center gap-2 rounded-pill bg-card px-4 py-2 text-small font-medium text-ink shadow-card">
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                Removing background…
+              </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {capturedImage && !removingBackground && (
           <motion.span
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
@@ -194,7 +227,7 @@ export default function SelfieCapture({
           </Button>
         )}
         {capturedImage && (
-          <Button type="button" variant="outline" onClick={retakePhoto}>
+          <Button type="button" variant="outline" onClick={retakePhoto} disabled={removingBackground}>
             <RotateCcw className="h-4 w-4" aria-hidden />
             Retake
           </Button>
@@ -238,7 +271,7 @@ export default function SelfieCapture({
           <ArrowLeft className="h-4 w-4" aria-hidden />
           Back
         </Button>
-        <Button type="button" onClick={handleSubmit}>
+        <Button type="button" onClick={handleSubmit} disabled={removingBackground}>
           {submitLabel}
         </Button>
       </StepFooter>

@@ -15,7 +15,25 @@ const SVG_HEIGHT = 543;
 const FRONT = '31 23 390 231';
 const BACK = '31 289 390 231';
 
-const flipSpring = { type: 'spring', stiffness: 70, damping: 13, mass: 0.9 } as const;
+// ponytail: browser print dialog ("Save as PDF") instead of a PDF library;
+// swap for jspdf if a one-click file download without the dialog is required.
+export function downloadCardPdf(svgUrl: string) {
+  const href = svgUrl.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  const face = (viewBox: string) =>
+    `<svg viewBox="${viewBox}"><image href="${href}" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" preserveAspectRatio="none"/></svg>`;
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = 'position:fixed;width:0;height:0;border:0';
+  // ID-1 card size (85.6mm wide), front above back
+  iframe.srcdoc = `<!doctype html><title>Digital ID</title><style>@page{margin:15mm}svg{display:block;width:85.6mm;margin:0 auto 10mm}</style>${face(FRONT)}${face(BACK)}`;
+  iframe.onload = () => {
+    const win = iframe.contentWindow!;
+    win.addEventListener('afterprint', () => iframe.remove());
+    win.print();
+  };
+  document.body.appendChild(iframe);
+}
+
+const flipSpring ={ type: 'spring', stiffness: 70, damping: 13, mass: 0.9 } as const;
 
 export default function IssuedCard({ svgUrl, fallback }: IssuedCardProps) {
   const [flipped, setFlipped] = useState(false);

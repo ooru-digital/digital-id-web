@@ -14,7 +14,6 @@ interface StepRailProps {
   current: number;
   onSelect: (index: number) => void;
   card: IdCardData;
-  cardStage: number;
   savedAt?: number;
 }
 
@@ -43,7 +42,7 @@ function ProgressBar({ current, total }: { current: number; total: number }) {
   );
 }
 
-export default function StepRail({ steps, current, onSelect, card, cardStage, savedAt }: StepRailProps) {
+export default function StepRail({ steps, current, onSelect, card, savedAt }: StepRailProps) {
   const next = steps[current + 1];
 
   return (
@@ -152,7 +151,7 @@ export default function StepRail({ steps, current, onSelect, card, cardStage, sa
         {next && (
           <figure className="mt-12 flex flex-col gap-3">
             <figcaption className="text-small font-medium">Your Digital ID so far</figcaption>
-            <IdCardPreview data={card} stage={cardStage} />
+            <IdCardPreview data={card} />
           </figure>
         )}
         {savedAt && (

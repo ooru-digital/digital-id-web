@@ -62,6 +62,7 @@ const toCountryCode = (nationality: string): string =>
 
 // yyyy-mm-dd -> YYMMDD
 const toMrzDate = (isoDate: string): string => {
+  if (!isoDate) return '<<<<<<'; // live preview before a date is entered
   const [year, month, day] = isoDate.split('-');
   return `${year.substring(2)}${month}${day}`;
 };

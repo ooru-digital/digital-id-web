@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import Button from './ui/Button';
-import Callout from './ui/Callout';
 import Field, { inputClass } from './ui/Field';
 import StepFooter from './ui/StepFooter';
 
@@ -17,13 +16,15 @@ export interface PersonalDetails {
 interface PersonalDetailsFormProps {
   onNext: (details: PersonalDetails) => void;
   onBack?: () => void;
+  // Called with the unsaved values on every change, so the card preview can fill in live
+  onChange?: (details: PersonalDetails) => void;
   initialValues?: PersonalDetails;
   submitLabel?: string;
 }
 
 type FormErrors = Partial<Record<keyof PersonalDetails, string>>;
 
-const emptyForm: PersonalDetails = {
+export const emptyForm: PersonalDetails = {
   givenName: '',
   surName: '',
   email: '',
@@ -50,11 +51,16 @@ const validateField = (field: keyof PersonalDetails, value: string) => {
 export default function PersonalDetailsForm({
   onNext,
   onBack,
+  onChange,
   initialValues,
   submitLabel = 'Continue to selfie'
 }: PersonalDetailsFormProps) {
   const [formData, setFormData] = useState<PersonalDetails>(initialValues || emptyForm);
   const [errors, setErrors] = useState<FormErrors>({});
+
+  useEffect(() => {
+    onChange?.(formData);
+  }, [formData, onChange]);
 
   const validateForm = () => {
     const newErrors: FormErrors = {};
@@ -124,9 +130,6 @@ export default function PersonalDetailsForm({
 
   return (
     <form onSubmit={handleSubmit} noValidate>
-      <Callout tone="info" title="Coming soon: automatic prefill" className="mb-12">
-        Your details will be fetched from the existing National ID (NID) database, so you won't need to type them in.
-      </Callout>
       {fieldset('Your name', 'As it appears on your official documents.',
         <>
           {textField('givenName', 'Given name', 'e.g. Amara', { autoComplete: 'given-name' })}
