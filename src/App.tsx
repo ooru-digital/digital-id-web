@@ -459,7 +459,7 @@ function App() {
                 <nav className="flex gap-6" aria-label="Legal">
                   <a href="#" className="hover:text-ink">Privacy</a>
                   <a href="#" className="hover:text-ink">Terms</a>
-                  <a href="mailto:support@ooru.io" className="hover:text-ink">Support</a>
+                  <a href="mailto:info@ooru.io" className="hover:text-ink">Support</a>
                 </nav>
               </div>
             </footer>

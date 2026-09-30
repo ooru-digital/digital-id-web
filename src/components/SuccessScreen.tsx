@@ -141,7 +141,7 @@ export default function SuccessScreen({ onStartOver, card, svgUrl, credentialId 
       <div className="flex flex-col items-center justify-between gap-4 border-t border-line pt-6 sm:flex-row">
         <p className="text-small text-ink-muted">
           Need help? Contact{' '}
-          <a href="mailto:support@ooru.io" className="font-medium text-azure-ink hover:underline">support@ooru.io</a>
+          <a href="mailto:info@ooru.io" className="font-medium text-azure-ink hover:underline">info@ooru.io</a>
         </p>
         <Button type="button" variant="outline" onClick={onStartOver}>
           Register another ID

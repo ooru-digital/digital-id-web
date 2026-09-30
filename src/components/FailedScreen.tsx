@@ -52,7 +52,7 @@ export default function FailedScreen({ error, onRetry, onStartOver }: FailedScre
 
       <p className="text-small text-ink-muted">
         If the problem continues, contact{' '}
-        <a href="mailto:support@ooru.io" className="font-medium text-azure-ink hover:underline">support@ooru.io</a>
+        <a href="mailto:info@ooru.io" className="font-medium text-azure-ink hover:underline">info@ooru.io</a>
         {' '}and include the error above.
       </p>
     </motion.div>
