@@ -30,7 +30,7 @@ export const apiConfig: APIConfig = {
     statusPollIntervalMs: 3000,
     statusPollTimeoutMs: 5 * 60 * 1000,
     credentialTemplateId: env.VITE_CREDISSUER_TEMPLATE_ID || '',
-    modeOfIssuance: 'issue',
+    modeOfIssuance: 'issue_and_notify',
     apiToken: env.VITE_CREDISSUER_API_TOKEN || '',
     issuerInfo: {
       orgCode: env.VITE_CREDISSUER_ORG_CODE || '',

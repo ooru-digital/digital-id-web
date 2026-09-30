@@ -90,7 +90,7 @@ export default function IssuedCard({ svgUrl, fallback }: IssuedCardProps) {
         </motion.button>
       </motion.div>
 
-      <p className="flex items-center gap-2 text-small text-ink-muted" aria-live="polite">
+      <p className="flex items-center gap-2 text-small text-ink-muted-on-strong" aria-live="polite">
         <RotateCw className="h-4 w-4" aria-hidden />
         Tap the card to see the {flipped ? 'front' : 'back'}
       </p>

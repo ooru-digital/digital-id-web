@@ -4,14 +4,10 @@ import { Check, Copy, Download, Loader2, Mail, MailCheck, RotateCw, ScanFace, Sh
 import { buildOfferQrUrl } from '../config/apiConfig';
 import Callout from './ui/Callout';
 import Button from './ui/Button';
-import IdCardPreview, { type IdCardData } from './ui/IdCardPreview';
-import IssuedCard from './ui/IssuedCard';
 import { fetchPresentationPdfUrl } from '../services/credIssuer';
 
 interface SuccessScreenProps {
   onStartOver: () => void;
-  card?: IdCardData;
-  svgUrl?: string;
   credentialId?: string;
 }
 
@@ -53,80 +49,65 @@ const FEATURES = [
   }
 ];
 
-export default function SuccessScreen({ onStartOver, card, svgUrl, credentialId }: SuccessScreenProps) {
-  const preview = card && <IdCardPreview data={card} stage={4} badge={{ label: 'Issued', tone: 'pass' }} />;
-
+export default function SuccessScreen({ onStartOver, credentialId }: SuccessScreenProps) {
   return (
     <div className="flex flex-col gap-12">
-      <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        {(svgUrl || card) && (
-          <motion.div
-            initial={{ scale: 0.96, y: 8 }}
-            animate={{ scale: 1, y: 0 }}
-            transition={{ duration: 0.6, ease }}
-            className="mx-auto w-full max-w-[28rem]"
-          >
-            {svgUrl ? <IssuedCard svgUrl={svgUrl} fallback={preview} /> : preview}
-          </motion.div>
-        )}
-
-        <div className="flex flex-col gap-8">
-          <div className="flex items-start gap-4">
-            <svg viewBox="0 0 48 48" className="h-12 w-12 flex-none text-pass" aria-hidden>
-              <motion.circle
-                cx="24" cy="24" r="22" fill="none" stroke="currentColor" strokeWidth="2"
-                initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.6, ease }}
-              />
-              <motion.path
-                d="M15 24.5l6 6 12-13" fill="none" stroke="currentColor" strokeWidth="2.5"
-                strokeLinecap="round" strokeLinejoin="round"
-                initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.4, ease, delay: 0.5 }}
-              />
-            </svg>
-            <div className="flex flex-col gap-2">
-              <p className="text-caption font-medium uppercase tracking-widest text-pass">Issued</p>
-              <h2 className="text-display-32">Your Digital ID is ready</h2>
-              <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-small text-ink-muted">
-                Signed &amp; issued via
-                <img src="/brand/credissuer-logo.svg" alt="CredIssuer" className="h-4 w-auto" />
-              </p>
-            </div>
+      <div className="flex flex-col gap-8">
+        <div className="flex items-center gap-4">
+          <svg viewBox="0 0 48 48" className="h-12 w-12 flex-none text-pass" aria-hidden>
+            <motion.circle
+              cx="24" cy="24" r="22" fill="none" stroke="currentColor" strokeWidth="2"
+              initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.6, ease }}
+            />
+            <motion.path
+              d="M15 24.5l6 6 12-13" fill="none" stroke="currentColor" strokeWidth="2.5"
+              strokeLinecap="round" strokeLinejoin="round"
+              initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.4, ease, delay: 0.5 }}
+            />
+          </svg>
+          <div className="flex flex-col gap-2">
+            <p className="text-caption font-medium uppercase tracking-widest text-pass">Issued</p>
+            <h2 className="text-display-32">Your Digital ID is ready</h2>
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-small text-ink-muted">
+              Signed &amp; issued via
+              <img src="/brand/credissuer-logo.svg" alt="CredIssuer" className="h-4 w-auto" />
+            </p>
           </div>
-
-          <ul className="flex flex-col divide-y divide-line/60 rounded-lg bg-card shadow-card">
-            {FEATURES.map(({ icon: Icon, title, body, tag }, index) => (
-              <motion.li
-                key={title}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, ease, delay: 0.7 + index * 0.08 }}
-                className="flex gap-4 p-5"
-              >
-                <span
-                  className={`flex h-10 w-10 flex-none items-center justify-center rounded-sm ${
-                    index === 0 ? 'bg-navy text-cyan' : 'bg-sand text-navy'
-                  }`}
-                >
-                  <Icon className="h-5 w-5" aria-hidden />
-                </span>
-                <div className="flex flex-col gap-1">
-                  <p className="flex flex-wrap items-center gap-2 text-label">
-                    {title}
-                    {tag && (
-                      <span className="inline-flex items-center gap-1 rounded-pill bg-pass/10 px-2 py-0.5 text-caption font-medium text-pass">
-                        <WifiOff className="h-3 w-3" aria-hidden />
-                        {tag}
-                      </span>
-                    )}
-                  </p>
-                  <p className="text-small leading-5 text-ink-muted">{body}</p>
-                </div>
-              </motion.li>
-            ))}
-          </ul>
-
-          {credentialId && <DownloadPdf credentialId={credentialId} />}
         </div>
+
+        <ul className="flex flex-col divide-y divide-line/60 rounded-lg bg-card shadow-card">
+          {FEATURES.map(({ icon: Icon, title, body, tag }, index) => (
+            <motion.li
+              key={title}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, ease, delay: 0.7 + index * 0.08 }}
+              className="flex gap-4 p-5"
+            >
+              <span
+                className={`flex h-10 w-10 flex-none items-center justify-center rounded-sm ${
+                  index === 0 ? 'bg-navy text-cyan' : 'bg-sand text-navy'
+                }`}
+              >
+                <Icon className="h-5 w-5" aria-hidden />
+              </span>
+              <div className="flex flex-col gap-1">
+                <p className="flex flex-wrap items-center gap-2 text-label">
+                  {title}
+                  {tag && (
+                    <span className="inline-flex items-center gap-1 rounded-pill bg-pass/10 px-2 py-0.5 text-caption font-medium text-pass">
+                      <WifiOff className="h-3 w-3" aria-hidden />
+                      {tag}
+                    </span>
+                  )}
+                </p>
+                <p className="text-small leading-5 text-ink-muted">{body}</p>
+              </div>
+            </motion.li>
+          ))}
+        </ul>
+
+        {credentialId && <DownloadPdf credentialId={credentialId} />}
       </div>
 
       <section className="rounded-lg bg-sand p-6 sm:p-12" aria-labelledby="wallet-heading">

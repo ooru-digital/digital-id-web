@@ -122,7 +122,7 @@ export default function PersonalDetailsForm({
 
   const fieldset = (legend: string, description: string, fields: React.ReactNode) => (
     <fieldset className="mt-12 border-t border-line pt-6 first:mt-0 first:border-t-0 first:pt-0">
-      <legend className="float-left mb-1 w-full text-lead-18">{legend}</legend>
+      <legend className="float-left mb-1 w-full text-lead-20">{legend}</legend>
       <p className="clear-left mb-6 text-small text-ink-muted">{description}</p>
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">{fields}</div>
     </fieldset>

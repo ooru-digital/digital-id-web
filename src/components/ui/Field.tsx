@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { AlertCircle } from 'lucide-react';
 
 export const inputClass = (hasError?: boolean) =>
-  `w-full rounded-sm border bg-card px-4 py-3 text-body text-ink placeholder:text-ink-muted/70 transition-colors duration-200 focus:border-ink focus-visible:outline-offset-0 ${
+  `w-full rounded-sm border bg-card px-4 py-3 text-body text-ink placeholder:text-ink-muted/70 transition-[border-color,box-shadow] duration-200 focus:border-ink focus:ring-4 focus:ring-cyan/25 focus-visible:outline-offset-0 ${
     hasError ? 'border-fail' : 'border-line-strong hover:border-ink'
   }`;
 

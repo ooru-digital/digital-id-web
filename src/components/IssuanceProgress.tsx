@@ -82,7 +82,7 @@ export default function IssuanceProgress({ transactionId, status, card }: Issuan
   });
 
   return (
-    <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+    <div className="grid items-center gap-12 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}

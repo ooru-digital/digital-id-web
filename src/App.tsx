@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, MotionConfig, motion } from 'framer-motion';
-import StepRail from './components/StepRail';
+import BrandPanel from './components/BrandPanel';
 import { type IdCardData, mrzNameLine } from './components/ui/IdCardPreview';
 import Button from './components/ui/Button';
 import Callout from './components/ui/Callout';
@@ -10,7 +10,6 @@ import PhotoVerification from './components/PhotoVerification';
 import IssuanceProgress from './components/IssuanceProgress';
 import SuccessScreen from './components/SuccessScreen';
 import FailedScreen from './components/FailedScreen';
-import LoginPage from './components/LoginPage';
 import { apiConfig } from './config/apiConfig';
 import { issueDigitalId, CredIssuerError } from './services/credIssuer';
 import { useIssuanceStatusPolling } from './hooks/useIssuanceStatusPolling';
@@ -20,7 +19,6 @@ type Step = 'personal' | 'selfie' | 'photoVerification' | 'issuing' | 'success' 
 
 const WIZARD_STEPS: Step[] = ['personal', 'selfie', 'photoVerification'];
 const STEP_LABELS = ['Details', 'Selfie', 'Review'];
-const STEP_HINTS = ['Name, birth date, NRC', 'Live photo of your face', 'Check and issue'];
 
 const ease = [0.22, 1, 0.36, 1] as const;
 
@@ -66,29 +64,29 @@ interface Draft {
 
 // ponytail: draft (details + selfie) sits unencrypted in this browser's localStorage until issue or
 // start over; move to a server-side draft API if applicants use shared devices.
-const draftKey = (email: string) => `ooru-draft:${email}`;
+const DRAFT_KEY = 'ooru-draft';
 
-const readDraft = (email: string): Draft | null => {
+const readDraft = (): Draft | null => {
   try {
-    const raw = localStorage.getItem(draftKey(email));
+    const raw = localStorage.getItem(DRAFT_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }
 };
 
-const writeDraft = (email: string, draft: Draft) => {
+const writeDraft = (draft: Draft) => {
   try {
-    localStorage.setItem(draftKey(email), JSON.stringify(draft));
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
     return true;
   } catch {
     return false; // storage full or blocked: the wizard still works, it just can't resume
   }
 };
 
-const removeDraft = (email: string) => {
+const removeDraft = () => {
   try {
-    localStorage.removeItem(draftKey(email));
+    localStorage.removeItem(DRAFT_KEY);
   } catch {
     // nothing to clean up
   }
@@ -97,24 +95,7 @@ const removeDraft = (email: string) => {
 const formatSavedAt = (timestamp: number) =>
   new Date(timestamp).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 
-interface User {
-  id: string;
-  name: string;
-  email: string;
-}
-
-const USER_STORAGE_KEY = 'digital-id-user';
-
 function App() {
-  const [user, setUser] = useState<User | null>(() => {
-    try {
-      const stored = localStorage.getItem(USER_STORAGE_KEY);
-      return stored ? (JSON.parse(stored) as User) : null;
-    } catch {
-      return null;
-    }
-  });
-  const isAuthenticated = user !== null;
   const [currentStep, setCurrentStep] = useState<Step>('personal');
   const [registrationData, setRegistrationData] = useState<RegistrationData>({});
   // Unsaved values from the details form, shown live on the rail card
@@ -133,7 +114,7 @@ function App() {
       onCompleted: (url, id) => {
         setSvgUrl(url);
         setCredentialId(id);
-        if (user) removeDraft(user.email);
+        removeDraft();
         setSavedAt(undefined);
         setCurrentStep('success');
       },
@@ -150,8 +131,8 @@ function App() {
     setCredentialId(undefined);
   };
 
-  const restoreDraft = (email: string) => {
-    const draft = readDraft(email);
+  const restoreDraft = () => {
+    const draft = readDraft();
     if (!draft || !WIZARD_STEPS.includes(draft.step)) return;
     setRegistrationData(draft.data);
     setCurrentStep(draft.step);
@@ -159,38 +140,10 @@ function App() {
     setResumedAt(draft.savedAt);
   };
 
-  // A session kept from an earlier visit resumes its draft on reload
+  // A draft saved on an earlier visit resumes on reload
   useEffect(() => {
-    if (user) restoreDraft(user.email);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    restoreDraft();
   }, []);
-
-  const handleLogin = (userData: User) => {
-    try {
-      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(userData));
-    } catch {
-      // session just won't survive a reload
-    }
-    setUser(userData);
-    restoreDraft(userData.email);
-  };
-
-  // Signing out keeps the saved draft so the application can be resumed
-  const handleLogout = () => {
-    try {
-      localStorage.removeItem(USER_STORAGE_KEY);
-    } catch {
-      // nothing to clean up
-    }
-    setUser(null);
-    setCurrentStep('personal');
-    setRegistrationData({});
-    setError('');
-    setSavedAt(undefined);
-    setResumedAt(undefined);
-    setReturnToReview(false);
-    resetIssuance();
-  };
 
   const goTo = (step: Step) => {
     setError('');
@@ -248,7 +201,7 @@ function App() {
   };
 
   const handleStartOver = () => {
-    if (user) removeDraft(user.email);
+    removeDraft();
     setCurrentStep('personal');
     setRegistrationData({});
     setError('');
@@ -309,12 +262,12 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [currentStep]);
 
-  // Auto-save completed steps so the application can be resumed after signing out
+  // Auto-save completed steps so the application can be resumed on a later visit
   useEffect(() => {
-    if (!user || !isWizardStep || (!registrationData.personalDetails && !registrationData.selfie)) return;
+    if (!isWizardStep || (!registrationData.personalDetails && !registrationData.selfie)) return;
     const now = Date.now();
-    if (writeDraft(user.email, { data: registrationData, step: currentStep, savedAt: now })) setSavedAt(now);
-  }, [user, isWizardStep, registrationData, currentStep]);
+    if (writeDraft({ data: registrationData, step: currentStep, savedAt: now })) setSavedAt(now);
+  }, [isWizardStep, registrationData, currentStep]);
 
   const { personalDetails, selfie } = registrationData;
   const card = personalDetails ? toIdCardData(personalDetails, selfie) : undefined;
@@ -323,9 +276,8 @@ function App() {
     selfie
   );
   const hasData = [!!personalDetails, !!selfie, true];
-  const railSteps = STEP_LABELS.map((label, index) => ({
+  const panelSteps = STEP_LABELS.map((label, index) => ({
     label,
-    hint: STEP_HINTS[index],
     summary: [personalDetails && `${personalDetails.givenName} ${personalDetails.surName}`, selfie && 'Photo captured'][index],
     reachable: hasData.slice(0, index).every(Boolean)
   }));
@@ -365,7 +317,7 @@ function App() {
       case 'issuing':
         return <IssuanceProgress transactionId={transactionId} status={issuanceStatus} card={card!} />;
       case 'success':
-        return <SuccessScreen onStartOver={handleStartOver} card={card} svgUrl={svgUrl} credentialId={credentialId} />;
+        return <SuccessScreen onStartOver={handleStartOver} credentialId={credentialId} />;
       case 'failed':
         return <FailedScreen error={error} onRetry={handleRetry} onStartOver={handleStartOver} />;
     }
@@ -373,99 +325,87 @@ function App() {
 
   return (
     <MotionConfig reducedMotion="user">
-      <AnimatePresence mode="wait">
-        {!isAuthenticated ? (
-          <motion.div key="login" exit={{ opacity: 0 }} transition={{ duration: 0.25 }}>
-            <LoginPage onLogin={handleLogin} />
-          </motion.div>
-        ) : (
-          <motion.div
-            key="app"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.35 }}
-            className="flex min-h-screen flex-col bg-canvas"
-          >
-            <header className="sticky top-0 z-20 border-b border-line bg-canvas/90 backdrop-blur">
-              <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
-                <div className="flex items-center gap-3">
-                  <img src="/brand/ooru-mark-colour.png" alt="" className="h-6 w-auto" />
-                  <span className="text-body font-medium">Ooru Digital ID</span>
-                </div>
-                <div className="flex items-center gap-4">
-                  <span className="hidden text-small text-ink-muted sm:inline">{user?.name}</span>
-                  <Button type="button" variant="outline" size="sm" onClick={handleLogout}>
-                    {isWizardStep ? 'Save and exit' : 'Sign out'}
-                  </Button>
-                </div>
-              </div>
-            </header>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.35 }}
+        className="grid min-h-screen bg-canvas lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]"
+      >
+        <BrandPanel
+          steps={panelSteps}
+          current={stepIndex}
+          onSelect={handleSelectStep}
+          card={railCard}
+          showCard={currentStep !== 'photoVerification' && currentStep !== 'issuing'}
+          issuedSvgUrl={currentStep === 'success' ? svgUrl : undefined}
+          savedAt={savedAt}
+        />
 
-            <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-12">
-              <div className={isWizardStep ? 'grid gap-12 lg:grid-cols-[280px_minmax(0,1fr)]' : ''}>
-                {isWizardStep && (
-                  <aside className="lg:sticky lg:top-24 lg:self-start">
-                    <StepRail
-                      steps={railSteps}
-                      current={stepIndex}
-                      onSelect={handleSelectStep}
-                      card={railCard}
-                      savedAt={savedAt}
-                    />
-                  </aside>
+        <div className="flex min-h-screen min-w-0 flex-col">
+          <main className="flex flex-1 flex-col px-6 py-10 sm:px-10 lg:px-12 lg:py-16 xl:px-16">
+            <AnimatePresence mode="wait" custom={direction} initial={false}>
+              <motion.section
+                key={currentStep}
+                custom={direction}
+                variants={stepVariants}
+                initial="enter"
+                animate="center"
+                exit="exit"
+                transition={{ duration: 0.28, ease }}
+                className={`w-full min-w-0 ${isWizardStep ? 'max-w-[600px]' : ''}`}
+                aria-labelledby="step-title"
+              >
+                {isWizardStep && resumedAt && (
+                  <Callout title="Welcome back" className="mb-10">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <p>We restored the application you saved on {formatSavedAt(resumedAt)}.</p>
+                      <Button type="button" variant="outline" size="sm" onClick={handleStartOver}>
+                        Start over
+                      </Button>
+                    </div>
+                  </Callout>
                 )}
 
-                <AnimatePresence mode="wait" custom={direction} initial={false}>
-                  <motion.section
-                    key={currentStep}
-                    custom={direction}
-                    variants={stepVariants}
-                    initial="enter"
-                    animate="center"
-                    exit="exit"
-                    transition={{ duration: 0.28, ease }}
-                    className="min-w-0"
-                    aria-labelledby="step-title"
-                  >
-                    {isWizardStep && resumedAt && (
-                      <Callout title="Welcome back" className="mb-12">
-                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                          <p>We restored the application you saved on {formatSavedAt(resumedAt)}.</p>
-                          <Button type="button" variant="outline" size="sm" onClick={handleStartOver}>
-                            Start over
-                          </Button>
-                        </div>
-                      </Callout>
-                    )}
+                <div className="mb-10 flex max-w-[62ch] flex-col gap-2">
+                  {isWizardStep && (
+                    <p className="text-small text-ink-muted">
+                      Step {stepIndex + 1} of {WIZARD_STEPS.length}
+                    </p>
+                  )}
+                  <h1 id="step-title" className="text-display-32 sm:text-display-40" aria-label={getStepTitle(currentStep)}>
+                    {getStepTitle(currentStep).split(' ').map((word, i) => (
+                      <span key={i} className="inline-block overflow-hidden pb-1 align-bottom" aria-hidden>
+                        <motion.span
+                          className="inline-block"
+                          initial={{ y: '110%' }}
+                          animate={{ y: 0 }}
+                          transition={{ duration: 0.7, ease, delay: 0.1 + i * 0.06 }}
+                        >
+                          {word}&nbsp;
+                        </motion.span>
+                      </span>
+                    ))}
+                  </h1>
+                  <p className="text-body text-ink-muted">{getStepDescription(currentStep)}</p>
+                </div>
 
-                    <div className="mb-6 flex max-w-[62ch] flex-col gap-2">
-                      <h1 id="step-title" className="text-display-32">{getStepTitle(currentStep)}</h1>
-                      <p className="text-body text-ink-muted">{getStepDescription(currentStep)}</p>
-                    </div>
+                {renderStep()}
+              </motion.section>
+            </AnimatePresence>
+          </main>
 
-                    {isWizardStep ? (
-                      <div className="rounded-lg bg-card p-6 shadow-card sm:p-8">{renderStep()}</div>
-                    ) : (
-                      renderStep()
-                    )}
-                  </motion.section>
-                </AnimatePresence>
-              </div>
-            </main>
-
-            <footer className="border-t border-line">
-              <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-6 py-6 text-caption text-ink-muted sm:flex-row">
-                <p>© {new Date().getFullYear()} Ooru Digital Private Limited</p>
-                <nav className="flex gap-6" aria-label="Legal">
-                  <a href="#" className="hover:text-ink">Privacy</a>
-                  <a href="#" className="hover:text-ink">Terms</a>
-                  <a href="mailto:info@ooru.io" className="hover:text-ink">Support</a>
-                </nav>
-              </div>
-            </footer>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          <footer className="px-6 py-6 sm:px-10 lg:px-12 xl:px-16">
+            <div className="flex flex-col items-start justify-between gap-2 border-t border-line pt-6 text-caption text-ink-muted sm:flex-row sm:items-center">
+              <p>© {new Date().getFullYear()} Ooru Digital Private Limited</p>
+              <nav className="flex gap-6" aria-label="Legal">
+                <a href="#" className="hover:text-ink">Privacy</a>
+                <a href="#" className="hover:text-ink">Terms</a>
+                <a href="mailto:info@ooru.io" className="hover:text-ink">Support</a>
+              </nav>
+            </div>
+          </footer>
+        </div>
+      </motion.div>
     </MotionConfig>
   );
 }
