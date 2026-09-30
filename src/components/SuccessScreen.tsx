@@ -1,219 +1,449 @@
-import React from 'react';
-import { CheckCircle, Home, Smartphone, Download, QrCode, ExternalLink, Star, Award, Shield } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { useEffect, useRef, useState } from 'react';
+import { Check, Copy, Download, Loader2, Mail, MailCheck, RotateCw, ScanFace, ShieldCheck, Smartphone, WifiOff, X } from 'lucide-react';
+import { buildOfferQrUrl } from '../config/apiConfig';
+import Callout from './ui/Callout';
+import Button from './ui/Button';
+import { fetchPresentationPdfUrl } from '../services/credIssuer';
 
 interface SuccessScreenProps {
   onStartOver: () => void;
+  credentialId?: string;
 }
 
-export default function SuccessScreen({ onStartOver }: SuccessScreenProps) {
+const ease = [0.22, 1, 0.36, 1] as const;
+
+const WALLET_STEPS = [
+  { title: 'Open CredIssuer Wallet', body: 'Launch the app on your phone and unlock it.' },
+  { title: 'Scan this code', body: 'Tap Scan and point your camera at the QR code.' },
+  { title: 'Accept your National ID', body: 'Review the details and accept to save it to your wallet.' }
+];
+
+const WALLET_ANDROID_URL = 'https://drive.google.com/drive/folders/1QafLwz_ou6KKwqCdkYaEvPhaR2Vhb7d9';
+const WALLET_INFO_EMAIL = 'info@ooru.io';
+
+// iPadOS reports itself as a Mac, so a touch-capable "Mac" is treated as iOS
+function detectPlatform(): 'android' | 'ios' | 'desktop' {
+  const ua = navigator.userAgent;
+  if (/Android/i.test(ua)) return 'android';
+  if (/iPhone|iPad|iPod/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return 'ios';
+  return 'desktop';
+}
+
+const FEATURES = [
+  {
+    icon: ScanFace,
+    title: 'Face check built into the QR',
+    body: 'The QR on your card carries your face data, so a verifier can confirm the holder is you.',
+    tag: 'Works offline'
+  },
+  {
+    icon: ShieldCheck,
+    title: 'Tamper-proof',
+    body: 'Digitally signed. Any change to the card breaks the signature and fails verification.'
+  },
+  {
+    icon: MailCheck,
+    title: 'A copy is in your inbox',
+    body: 'We emailed your signed Digital ID, so you always have a backup.'
+  }
+];
+
+export default function SuccessScreen({ onStartOver, credentialId }: SuccessScreenProps) {
   return (
-    <div className="max-w-4xl mx-auto text-center">
-      <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-        {/* Success Header */}
-        <div className="bg-gradient-to-r from-green-500 to-emerald-600 px-6 py-8 text-white">
-          <div className="flex justify-center mb-4">
-            <div className="relative">
-              <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
-                <CheckCircle className="w-8 h-8 text-white" />
-              </div>
-              <div className="absolute -top-1 -right-1">
-                <div className="w-6 h-6 bg-yellow-400 rounded-full flex items-center justify-center">
-                  <Star className="w-3 h-3 text-yellow-800" />
-                </div>
-              </div>
-            </div>
+    <div className="flex flex-col gap-12">
+      <div className="flex flex-col gap-8">
+        <div className="flex items-center gap-4">
+          <svg viewBox="0 0 48 48" className="h-12 w-12 flex-none text-pass" aria-hidden>
+            <motion.circle
+              cx="24" cy="24" r="22" fill="none" stroke="currentColor" strokeWidth="2"
+              initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.6, ease }}
+            />
+            <motion.path
+              d="M15 24.5l6 6 12-13" fill="none" stroke="currentColor" strokeWidth="2.5"
+              strokeLinecap="round" strokeLinejoin="round"
+              initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.4, ease, delay: 0.5 }}
+            />
+          </svg>
+          <div className="flex flex-col gap-2">
+            <p className="text-caption font-medium uppercase tracking-widest text-pass">Issued</p>
+            <h2 className="text-display-32">Your Digital ID is ready</h2>
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-small text-ink-muted">
+              Signed &amp; issued via
+              <img src="/brand/credissuer-logo.svg" alt="CredIssuer" className="h-4 w-auto" />
+            </p>
           </div>
-          
-          <h2 className="text-2xl font-bold mb-2">Digital ID Created Successfully!</h2>
-          <p className="text-green-100">
-            Your digital national ID has been successfully created and is ready for download.
-          </p>
         </div>
 
-        <div className="p-6 lg:p-8 space-y-6">
-          {/* Status Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-green-50 rounded-lg p-4 border border-green-200">
-              <div className="flex items-center justify-center w-8 h-8 bg-green-600 rounded-lg mb-3 mx-auto">
-                <CheckCircle className="w-4 h-4 text-white" />
-              </div>
-              <h3 className="font-semibold text-green-900 mb-1 text-sm">Identity Verified</h3>
-              <p className="text-xs text-green-700">Your identity has been successfully verified</p>
-            </div>
-            
-            <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-              <div className="flex items-center justify-center w-8 h-8 bg-blue-600 rounded-lg mb-3 mx-auto">
-                <Award className="w-4 h-4 text-white" />
-              </div>
-              <h3 className="font-semibold text-blue-900 mb-1 text-sm">Digital ID Created</h3>
-              <p className="text-xs text-blue-700">Your digital national ID has been generated</p>
-            </div>
-            
-            <div className="bg-[#5D5FEF]/10 rounded-lg p-4 border border-[#5D5FEF]/20">
-              <div className="flex items-center justify-center w-8 h-8 bg-[#5D5FEF] rounded-lg mb-3 mx-auto">
-                <Smartphone className="w-4 h-4 text-white" />
-              </div>
-              <h3 className="font-semibold text-[#5D5FEF] mb-1 text-sm">Ready for Download</h3>
-              <p className="text-xs text-[#5D5FEF]/70">Available in Inji Wallet</p>
-            </div>
-          </div>
-
-          {/* Inji Wallet Instructions */}
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
-            <div className="flex items-center justify-center mb-4">
-              <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
-                <Smartphone className="w-6 h-6 text-white" />
-              </div>
-            </div>
-            
-            <h3 className="font-bold text-blue-900 mb-3 text-lg">Download Your Digital National ID</h3>
-            <p className="text-blue-800 mb-4 text-sm">
-              Your digital national ID is now available for download using the Inji Wallet mobile application.
-            </p>
-
-            {/* Download Steps */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-              <div className="bg-white rounded-lg p-4 border border-blue-200">
-                <div className="flex items-start space-x-3">
-                  <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0 text-white text-xs font-bold">
-                    1
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-blue-900 text-sm mb-1">Download Inji Wallet</h4>
-                    <p className="text-xs text-blue-700">Install the Inji Wallet app from your device's app store</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg p-4 border border-blue-200">
-                <div className="flex items-start space-x-3">
-                  <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0 text-white text-xs font-bold">
-                    2
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-blue-900 text-sm mb-1">Open the App</h4>
-                    <p className="text-xs text-blue-700">Launch Inji Wallet and set up your secure wallet</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg p-4 border border-blue-200">
-                <div className="flex items-start space-x-3">
-                  <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0 text-white text-xs font-bold">
-                    3
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-blue-900 text-sm mb-1">Add Digital ID</h4>
-                    <p className="text-xs text-blue-700">Use the "Add Credential" feature to download your digital national ID</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg p-4 border border-blue-200">
-                <div className="flex items-start space-x-3">
-                  <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0 text-white text-xs font-bold">
-                    4
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-blue-900 text-sm mb-1">Verify & Use</h4>
-                    <p className="text-xs text-blue-700">Your digital ID is now ready for secure verification</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* App Store Links */}
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <a
-                href="https://apps.apple.com/app/inji-wallet"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center px-4 py-2 bg-black text-white font-medium rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-all duration-200 text-sm"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Download for iOS
-                <ExternalLink className="w-3 h-3 ml-1" />
-              </a>
-              
-              <a
-                href="https://play.google.com/store/apps/details?id=io.mosip.inji"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all duration-200 text-sm"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Download for Android
-                <ExternalLink className="w-3 h-3 ml-1" />
-              </a>
-            </div>
-          </div>
-
-          {/* Features */}
-          <div className="bg-gradient-to-r from-[#5D5FEF]/10 to-[#7C3AED]/10 rounded-lg p-6 border border-[#5D5FEF]/20">
-            <h3 className="font-bold text-[#5D5FEF] mb-4 flex items-center justify-center">
-              <Shield className="w-5 h-5 mr-2" />
-              Why Use Inji Wallet?
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="flex items-start space-x-2">
-                <div className="w-4 h-4 bg-[#5D5FEF] rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <CheckCircle className="w-2 h-2 text-white" />
-                </div>
-                <div className="text-left">
-                  <p className="font-medium text-[#5D5FEF] text-xs">Secure Storage</p>
-                  <p className="text-xs text-[#5D5FEF]/70">Your credentials are stored securely on your device</p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-2">
-                <div className="w-4 h-4 bg-[#5D5FEF] rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <CheckCircle className="w-2 h-2 text-white" />
-                </div>
-                <div className="text-left">
-                  <p className="font-medium text-[#5D5FEF] text-xs">Offline Access</p>
-                  <p className="text-xs text-[#5D5FEF]/70">Access your digital ID even without internet</p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-2">
-                <div className="w-4 h-4 bg-[#5D5FEF] rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <CheckCircle className="w-2 h-2 text-white" />
-                </div>
-                <div className="text-left">
-                  <p className="font-medium text-[#5D5FEF] text-xs">Easy Verification</p>
-                  <p className="text-xs text-[#5D5FEF]/70">Quick QR code scanning for instant verification</p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-2">
-                <div className="w-4 h-4 bg-[#5D5FEF] rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <CheckCircle className="w-2 h-2 text-white" />
-                </div>
-                <div className="text-left">
-                  <p className="font-medium text-[#5D5FEF] text-xs">Privacy First</p>
-                  <p className="text-xs text-[#5D5FEF]/70">You control what information to share</p>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          {/* Action Button */}
-          <div className="flex justify-center pt-2">
-            <button
-              onClick={onStartOver}
-              className="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-all duration-200 text-sm"
+        <ul className="flex flex-col divide-y divide-line/60 rounded-lg bg-card shadow-card">
+          {FEATURES.map(({ icon: Icon, title, body, tag }, index) => (
+            <motion.li
+              key={title}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, ease, delay: 0.7 + index * 0.08 }}
+              className="flex gap-4 p-5"
             >
-              <Home className="w-4 h-4 mr-2" />
-              Register Another ID
-            </button>
-          </div>
+              <span
+                className={`flex h-10 w-10 flex-none items-center justify-center rounded-sm ${
+                  index === 0 ? 'bg-navy text-cyan' : 'bg-sand text-navy'
+                }`}
+              >
+                <Icon className="h-5 w-5" aria-hidden />
+              </span>
+              <div className="flex flex-col gap-1">
+                <p className="flex flex-wrap items-center gap-2 text-label">
+                  {title}
+                  {tag && (
+                    <span className="inline-flex items-center gap-1 rounded-pill bg-pass/10 px-2 py-0.5 text-caption font-medium text-pass">
+                      <WifiOff className="h-3 w-3" aria-hidden />
+                      {tag}
+                    </span>
+                  )}
+                </p>
+                <p className="text-small leading-5 text-ink-muted">{body}</p>
+              </div>
+            </motion.li>
+          ))}
+        </ul>
 
-          {/* Support Notice */}
-          <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-            <p className="text-xs text-gray-600 text-center">
-              Need help downloading your digital ID? Contact our support team at{' '}
-              <span className="font-medium">support@govpass.gov</span> or visit our help center.
-            </p>
+        {credentialId && <DownloadPdf credentialId={credentialId} />}
+      </div>
+
+      <section className="rounded-lg bg-sand p-6 sm:p-12" aria-labelledby="wallet-heading">
+        <div className="mb-12 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex flex-col gap-2">
+            <h3 id="wallet-heading" className="text-display-28">Add It to CredIssuer Wallet</h3>
+            <p className="text-body text-ink-muted">Scan the code with the CredIssuer Wallet app to keep your National ID on your phone.</p>
           </div>
+          <DownloadWallet />
         </div>
+
+        <div className="grid items-center gap-12 lg:grid-cols-[auto_minmax(0,1fr)]">
+          <WalletQr credentialId={credentialId} />
+
+          <ol className="flex flex-col gap-6">
+            {WALLET_STEPS.map((step, index) => (
+              <motion.li
+                key={step.title}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, ease, delay: 0.6 + index * 0.08 }}
+                className="flex gap-4"
+              >
+                <span className="flex h-8 w-8 flex-none items-center justify-center rounded-pill border border-line-strong bg-card text-small font-medium">
+                  {index + 1}
+                </span>
+                <div className="flex flex-col gap-1">
+                  <p className="text-body font-medium">{step.title}</p>
+                  <p className="text-small text-ink-muted">{step.body}</p>
+                </div>
+              </motion.li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      <div className="flex flex-col items-center justify-between gap-4 border-t border-line pt-6 sm:flex-row">
+        <p className="text-small text-ink-muted">
+          Need help? Contact{' '}
+          <a href="mailto:info@ooru.io" className="font-medium text-azure-ink hover:underline">info@ooru.io</a>
+        </p>
+        <Button type="button" variant="outline" onClick={onStartOver}>
+          Register another ID
+        </Button>
       </div>
     </div>
+  );
+}
+
+// Fetched as a blob so the download stays on this page: browsers ignore
+// <a download> on cross-origin URLs and navigate instead
+async function saveFile(url: string, filename: string) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Download failed (${response.status})`);
+  const blobUrl = URL.createObjectURL(await response.blob());
+  const link = document.createElement('a');
+  link.href = blobUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+}
+
+type PdfStatus = 'idle' | 'preparing' | 'downloading' | 'done';
+
+const PDF_STEPS: Record<Exclude<PdfStatus, 'idle'>, { title: string; body: string }> = {
+  preparing: { title: 'Preparing your Digital ID', body: 'Generating your print-ready PDF. This can take a few seconds.' },
+  downloading: { title: 'Downloading…', body: 'Saving the PDF to your device.' },
+  done: { title: 'Download complete', body: 'Check your Downloads folder.' }
+};
+
+function DownloadPdf({ credentialId }: { credentialId: string }) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const [status, setStatus] = useState<PdfStatus>('idle');
+  const [error, setError] = useState<string>();
+  const loading = status === 'preparing' || status === 'downloading';
+
+  // Dialog mirrors status: open while working or done, closed when idle
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (status === 'idle') dialog?.close();
+    else if (!dialog?.open) dialog?.showModal();
+    if (status !== 'done') return;
+    const timer = setTimeout(() => setStatus('idle'), 3000);
+    return () => clearTimeout(timer);
+  }, [status]);
+
+  const close = () => setStatus('idle');
+
+  const handleClick = async () => {
+    setStatus('preparing');
+    setError(undefined);
+    try {
+      const url = await fetchPresentationPdfUrl(credentialId);
+      setStatus('downloading');
+      try {
+        await saveFile(url, 'digital-id.pdf');
+        setStatus('done');
+      } catch {
+        // ponytail: blob fetch fails when the PDF host lacks CORS; fall back to opening it
+        setStatus('idle');
+        if (!window.open(url, '_blank')) window.location.href = url;
+      }
+    } catch (e) {
+      setStatus('idle');
+      setError(e instanceof Error ? e.message : 'Unable to prepare your PDF.');
+    }
+  };
+
+  const step = status === 'idle' ? undefined : PDF_STEPS[status];
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+        <Button type="button" className="self-start" onClick={handleClick} loading={loading}>
+          {!loading && <Download className="h-4 w-4" aria-hidden />}
+          {loading ? 'Preparing PDF…' : 'Download card (PDF)'}
+        </Button>
+        <p className="text-caption text-ink-muted">Print-ready, with the verifiable QR.</p>
+      </div>
+      {error && <p role="alert" className="text-caption text-fail">{error}</p>}
+
+      <dialog
+        ref={dialogRef}
+        aria-labelledby="pdf-dialog-title"
+        aria-describedby="pdf-dialog-body"
+        onCancel={e => { e.preventDefault(); if (!loading) close(); }}
+        onClick={e => !loading && e.target === e.currentTarget && close()}
+        className="m-auto w-[calc(100%-2rem)] max-w-sm rounded-lg bg-card text-ink shadow-card backdrop:bg-navy/50 backdrop:backdrop-blur-sm"
+      >
+        {step && (
+          <div className="relative flex flex-col items-center gap-5 p-6 text-center sm:p-8">
+            {status === 'done' && (
+              <button
+                type="button"
+                onClick={close}
+                className="absolute right-4 top-4 rounded-pill p-2 text-ink-muted transition-colors hover:bg-sand hover:text-ink"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" aria-hidden />
+              </button>
+            )}
+            <span
+              className={`flex h-14 w-14 items-center justify-center rounded-pill ${
+                status === 'done' ? 'bg-pass/10 text-pass' : 'bg-sand text-navy'
+              }`}
+            >
+              {status === 'done'
+                ? <Check className="h-6 w-6" aria-hidden />
+                : <Loader2 className="h-6 w-6 animate-spin" aria-hidden />}
+            </span>
+            <div aria-live="polite" className="flex flex-col gap-2">
+              <h4 id="pdf-dialog-title" className="text-lead-18 font-medium">{step.title}</h4>
+              <p id="pdf-dialog-body" className="text-small text-ink-muted">{step.body}</p>
+            </div>
+            {status === 'done' && (
+              <Button type="button" variant="outline" size="sm" onClick={close}>Done</Button>
+            )}
+          </div>
+        )}
+      </dialog>
+    </div>
+  );
+}
+
+function DownloadWallet() {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const [mode, setMode] = useState<'ios' | 'desktop'>('desktop');
+  const [copied, setCopied] = useState(false);
+
+  const open = () => {
+    const platform = detectPlatform();
+    if (platform === 'android') {
+      window.open(WALLET_ANDROID_URL, '_blank', 'noopener');
+      return;
+    }
+    setMode(platform);
+    setCopied(false);
+    dialogRef.current?.showModal();
+  };
+  const close = () => dialogRef.current?.close();
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(WALLET_ANDROID_URL);
+      setCopied(true);
+    } catch {
+      window.open(WALLET_ANDROID_URL, '_blank', 'noopener');
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-2 sm:items-end">
+      <p className="text-small text-ink-muted">Don&apos;t have the app yet?</p>
+      <Button type="button" variant="outline" className="self-start sm:self-auto" onClick={open}>
+        <Smartphone className="h-4 w-4" aria-hidden />
+        Download Wallet
+      </Button>
+
+      <dialog
+        ref={dialogRef}
+        aria-labelledby="wallet-dialog-title"
+        onClick={e => e.target === e.currentTarget && close()}
+        className="m-auto w-[calc(100%-2rem)] max-w-md rounded-lg bg-card text-ink shadow-card backdrop:bg-navy/50 backdrop:backdrop-blur-sm"
+      >
+        <div className="relative flex flex-col gap-6 p-6 sm:p-8">
+          <button
+            type="button"
+            onClick={close}
+            className="absolute right-4 top-4 rounded-pill p-2 text-ink-muted transition-colors hover:bg-sand hover:text-ink"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" aria-hidden />
+          </button>
+
+          {mode === 'desktop' ? (
+            <>
+              <div className="flex flex-col gap-2 pr-8">
+                <h4 id="wallet-dialog-title" className="text-lead-18 font-medium">Get CredIssuer Wallet</h4>
+                <p className="text-small text-ink-muted">Scan with your Android phone&apos;s camera to download the app.</p>
+              </div>
+
+              <div className="relative mx-auto p-4">
+                {CORNERS.map(c => (
+                  <span key={c} className={`absolute h-8 w-8 border-navy ${c}`} aria-hidden />
+                ))}
+                <img
+                  src="/brand/wallet-android-qr.svg"
+                  alt="QR code to download CredIssuer Wallet for Android"
+                  className="h-52 w-52 rounded-sm bg-card p-3"
+                />
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <Button type="button" variant="outline" size="sm" className="self-center" onClick={copyLink}>
+                  {copied ? <Check className="h-3.5 w-3.5 text-pass" aria-hidden /> : <Copy className="h-3.5 w-3.5" aria-hidden />}
+                  {copied ? 'Link copied' : 'Copy download link'}
+                </Button>
+                <p className="rounded-lg bg-sand px-4 py-3 text-center text-small text-ink-muted">
+                  On iPhone? The iOS app is coming soon. Reach out to{' '}
+                  <a href={`mailto:${WALLET_INFO_EMAIL}`} className="font-medium text-azure-ink hover:underline">{WALLET_INFO_EMAIL}</a>
+                  {' '}for early access.
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <span className="flex h-12 w-12 items-center justify-center rounded-pill bg-sand text-navy">
+                <Smartphone className="h-5 w-5" aria-hidden />
+              </span>
+              <div className="flex flex-col gap-2">
+                <h4 id="wallet-dialog-title" className="text-lead-18 font-medium">iOS app coming soon</h4>
+                <p className="text-small text-ink-muted">
+                  CredIssuer Wallet is available on Android today, and we&apos;re working on the iPhone version.
+                  For early access or more information, reach out to{' '}
+                  <span className="font-medium text-ink">{WALLET_INFO_EMAIL}</span>.
+                </p>
+                <p className="text-small text-ink-muted">Your Digital ID is already in your email, so nothing is lost in the meantime.</p>
+              </div>
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <a
+                  href={`mailto:${WALLET_INFO_EMAIL}?subject=${encodeURIComponent('CredIssuer Wallet for iOS')}`}
+                  className="inline-flex items-center justify-center gap-2 rounded-pill border border-transparent bg-navy px-6 py-3 text-label text-ink-on-strong transition-colors hover:bg-azure-ink"
+                >
+                  <Mail className="h-4 w-4" aria-hidden />
+                  Email {WALLET_INFO_EMAIL}
+                </a>
+                <Button type="button" variant="outline" onClick={close}>Close</Button>
+              </div>
+            </>
+          )}
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
+// Scanner-style corner brackets framing the QR
+const CORNERS = [
+  'left-0 top-0 border-l-2 border-t-2 rounded-tl-lg',
+  'right-0 top-0 border-r-2 border-t-2 rounded-tr-lg',
+  'bottom-0 left-0 border-b-2 border-l-2 rounded-bl-lg',
+  'bottom-0 right-0 border-b-2 border-r-2 rounded-br-lg'
+];
+
+function WalletQr({ credentialId }: { credentialId?: string }) {
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [attempt, setAttempt] = useState(0);
+
+  if (!credentialId || state === 'error') {
+    return (
+      <Callout tone="warn" title="QR code unavailable" className="w-full max-w-[20rem]">
+        <p>Your Digital ID was still sent to your email.</p>
+        {credentialId && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-4"
+            onClick={() => { setState('loading'); setAttempt(a => a + 1); }}
+          >
+            <RotateCw className="h-3.5 w-3.5" aria-hidden />
+            Try again
+          </Button>
+        )}
+      </Callout>
+    );
+  }
+
+  return (
+    <figure className="mx-auto flex flex-col items-center gap-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.5, ease, delay: 0.4 }}
+        className="relative p-4"
+      >
+        {CORNERS.map(c => (
+          <span key={c} className={`absolute h-8 w-8 border-navy ${c}`} aria-hidden />
+        ))}
+        <div className="relative h-60 w-60 overflow-hidden rounded-sm bg-card p-3">
+          {state === 'loading' && <div className="absolute inset-3 animate-pulse rounded bg-line" aria-hidden />}
+          <img
+            key={attempt}
+            src={buildOfferQrUrl(credentialId)}
+            alt="QR code to add your National ID to CredIssuer Wallet"
+            className={`h-full w-full object-contain transition-opacity ${state === 'ready' ? 'opacity-100' : 'opacity-0'}`}
+            onLoad={() => setState('ready')}
+            onError={() => setState('error')}
+          />
+        </div>
+      </motion.div>
+      <figcaption className="max-w-[16rem] text-center text-small text-ink-muted">
+        On this phone? Open this page on another screen to scan it.
+      </figcaption>
+    </figure>
   );
 }

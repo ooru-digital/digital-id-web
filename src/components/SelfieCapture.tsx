@@ -1,16 +1,34 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { Camera, RotateCcw, Check, AlertCircle, ArrowLeft } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Camera, RotateCcw, Check, ArrowLeft, AlertCircle, Loader2 } from 'lucide-react';
+import Button from './ui/Button';
+import Callout from './ui/Callout';
+import StepFooter from './ui/StepFooter';
+
+// MediaPipe is only needed on this step, so it loads in its own chunk
+const loadBackgroundRemoval = () => import('../utils/removeBackground');
 
 interface SelfieCaptureProps {
   onNext: (imageData: string) => void;
   onBack: () => void;
   error?: string;
+  initialImage?: string;
+  submitLabel?: string;
 }
 
-export default function SelfieCapture({ onNext, onBack, error }: SelfieCaptureProps) {
+export default function SelfieCapture({
+  onNext,
+  onBack,
+  error,
+  initialImage,
+  submitLabel = 'Continue to review'
+}: SelfieCaptureProps) {
   const [isStreaming, setIsStreaming] = useState(false);
-  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [capturedImage, setCapturedImage] = useState<string | null>(initialImage || null);
   const [localError, setLocalError] = useState('');
+  const [flashKey, setFlashKey] = useState(0);
+  const [missingPhoto, setMissingPhoto] = useState(false);
+  const [removingBackground, setRemovingBackground] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -18,6 +36,7 @@ export default function SelfieCapture({ onNext, onBack, error }: SelfieCapturePr
   const startCamera = useCallback(async () => {
     try {
       setLocalError('');
+      loadBackgroundRemoval().then(m => m.preloadSegmenter()).catch(() => {}); // warm up while the user frames the shot
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           width: { ideal: 1280 },
@@ -45,7 +64,7 @@ export default function SelfieCapture({ onNext, onBack, error }: SelfieCapturePr
     setIsStreaming(false);
   }, []);
 
-  const capturePhoto = useCallback(() => {
+  const capturePhoto = useCallback(async () => {
     if (videoRef.current && canvasRef.current) {
       const canvas = canvasRef.current;
       const video = videoRef.current;
@@ -56,9 +75,21 @@ export default function SelfieCapture({ onNext, onBack, error }: SelfieCapturePr
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.drawImage(video, 0, 0);
-        const imageData = canvas.toDataURL('image/jpeg', 0.8);
-        setCapturedImage(imageData);
+        setCapturedImage(canvas.toDataURL('image/jpeg', 0.8));
+        setMissingPhoto(false);
+        setFlashKey(k => k + 1);
         stopCamera();
+
+        // Swap in the white-background version; if segmentation fails the original photo stays
+        setRemovingBackground(true);
+        try {
+          await (await loadBackgroundRemoval()).removeBackground(canvas);
+          setCapturedImage(canvas.toDataURL('image/jpeg', 0.8));
+        } catch (err) {
+          console.warn('Background removal skipped:', err);
+        } finally {
+          setRemovingBackground(false);
+        }
       }
     }
   }, [stopCamera]);
@@ -69,8 +100,11 @@ export default function SelfieCapture({ onNext, onBack, error }: SelfieCapturePr
   }, [startCamera]);
 
   const handleSubmit = () => {
+    if (removingBackground) return;
     if (capturedImage) {
       onNext(capturedImage);
+    } else {
+      setMissingPhoto(true);
     }
   };
 
@@ -83,135 +117,164 @@ export default function SelfieCapture({ onNext, onBack, error }: SelfieCapturePr
   const displayError = error || localError;
 
   return (
-    <div className="max-w-3xl mx-auto">
-      <div className="bg-white rounded-xl shadow-lg p-6">
-        <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-12 h-12 bg-[#5D5FEF]/10 rounded-xl mb-3">
-            <Camera className="w-6 h-6 text-[#5D5FEF]" />
-          </div>
-          <h3 className="text-xl font-bold text-gray-900 mb-1">Take a Selfie</h3>
-          <p className="text-sm text-gray-600">Please take a clear photo of yourself for identity verification</p>
-        </div>
+    <div>
+      <div className="relative aspect-[4/3] overflow-hidden rounded-lg bg-navy sm:aspect-video">
+        <video
+          ref={videoRef}
+          autoPlay
+          muted
+          playsInline
+          className="h-full w-full -scale-x-100 object-cover"
+        />
 
-        <div className="space-y-4">
-          <div className="relative">
-            <div className="aspect-video bg-gray-100 rounded-xl overflow-hidden border border-gray-200">
-              {capturedImage ? (
-                <img
-                  src={capturedImage}
-                  alt="Captured selfie"
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  muted
-                  playsInline
-                  className="w-full h-full object-cover"
-                />
-              )}
-              
-              {!isStreaming && !capturedImage && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="text-center">
-                    <div className="w-16 h-16 bg-gray-200 rounded-xl flex items-center justify-center mx-auto mb-3">
-                      <Camera className="w-8 h-8 text-gray-400" />
-                    </div>
-                    <p className="text-gray-500 font-medium text-sm">Camera preview will appear here</p>
-                    <p className="text-xs text-gray-400">Click "Start Camera" to begin</p>
-                  </div>
-                </div>
-              )}
-            </div>
-            
-            <canvas ref={canvasRef} className="hidden" />
-          </div>
+        {isStreaming && !capturedImage && (
+          <motion.div
+            initial={{ opacity: 0, scale: 1.05 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="pointer-events-none absolute inset-0 flex items-center justify-center"
+            aria-hidden
+          >
+            <div className="aspect-[3/4] h-[72%] rounded-[50%] border-2 border-dashed border-ink-on-strong/80 shadow-[0_0_0_9999px_rgba(10,57,112,0.45)]" />
+            <p className="absolute bottom-4 rounded-pill bg-navy/80 px-4 py-2 text-small text-ink-on-strong">
+              Fit your face inside the oval
+            </p>
+          </motion.div>
+        )}
 
-          {displayError && (
-            <div className="flex items-center space-x-3 text-red-600 bg-red-50 p-3 rounded-lg border border-red-200">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <span className="text-xs">{displayError}</span>
-            </div>
+        <AnimatePresence>
+          {capturedImage && (
+            <motion.img
+              key={capturedImage}
+              src={capturedImage}
+              alt="Captured selfie"
+              initial={{ opacity: 0, scale: 1.04 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+              className="absolute inset-0 h-full w-full object-cover"
+            />
           )}
+        </AnimatePresence>
 
-          <div className="flex justify-center space-x-3">
-            {!isStreaming && !capturedImage && (
-              <button
-                onClick={startCamera}
-                className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-[#5D5FEF] to-[#7C3AED] text-white font-semibold rounded-lg hover:from-[#5D5FEF]/90 hover:to-[#7C3AED]/90 focus:outline-none focus:ring-2 focus:ring-[#5D5FEF] focus:ring-offset-2 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 text-sm"
-              >
-                <Camera className="w-4 h-4 mr-2" />
-                Start Camera
-              </button>
-            )}
-            
-            {isStreaming && (
-              <button
-                onClick={capturePhoto}
-                className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-[#5D5FEF] to-[#7C3AED] text-white font-semibold rounded-lg hover:from-[#5D5FEF]/90 hover:to-[#7C3AED]/90 focus:outline-none focus:ring-2 focus:ring-[#5D5FEF] focus:ring-offset-2 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 text-sm"
-              >
-                <Camera className="w-4 h-4 mr-2" />
-                Capture Photo
-              </button>
-            )}
-            
-            {capturedImage && (
-              <button
-                onClick={retakePhoto}
-                className="inline-flex items-center px-4 py-2 bg-gray-600 text-white font-medium rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-all duration-200 text-sm"
-              >
-                <RotateCcw className="w-4 h-4 mr-2" />
-                Retake
-              </button>
-            )}
+        <AnimatePresence>
+          {flashKey > 0 && (
+            <motion.div
+              key={flashKey}
+              initial={{ opacity: 0.9 }}
+              animate={{ opacity: 0 }}
+              transition={{ duration: 0.45 }}
+              className="pointer-events-none absolute inset-0 bg-ink-on-strong"
+              aria-hidden
+            />
+          )}
+        </AnimatePresence>
+
+        {!isStreaming && !capturedImage && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-6 text-center text-ink-on-strong">
+            <span className="flex h-12 w-12 items-center justify-center rounded-pill border border-ink-on-strong/30">
+              <Camera className="h-5 w-5" aria-hidden />
+            </span>
+            <div className="flex flex-col gap-1">
+              <p className="text-body font-medium">Your camera preview appears here</p>
+              <p className="text-small text-ink-muted-on-strong">We only use the photo for this application.</p>
+            </div>
           </div>
+        )}
 
-          <div className="bg-gradient-to-r from-[#5D5FEF]/10 to-[#7C3AED]/10 rounded-lg p-4 border border-[#5D5FEF]/20">
-            <h3 className="font-semibold text-[#5D5FEF] mb-2 flex items-center text-sm">
-              <div className="w-1.5 h-1.5 bg-[#5D5FEF] rounded-full mr-2"></div>
-              Selfie Guidelines
-            </h3>
-            <ul className="text-xs text-[#5D5FEF]/80 space-y-1">
-              <li className="flex items-start">
-                <div className="w-1 h-1 bg-[#5D5FEF] rounded-full mt-1.5 mr-2 flex-shrink-0"></div>
-                Look directly at the camera with a neutral expression
-              </li>
-              <li className="flex items-start">
-                <div className="w-1 h-1 bg-[#5D5FEF] rounded-full mt-1.5 mr-2 flex-shrink-0"></div>
-                Ensure your face is well-lit and clearly visible
-              </li>
-              <li className="flex items-start">
-                <div className="w-1 h-1 bg-[#5D5FEF] rounded-full mt-1.5 mr-2 flex-shrink-0"></div>
-                Remove sunglasses, hats, or anything covering your face
-              </li>
-              <li className="flex items-start">
-                <div className="w-1 h-1 bg-[#5D5FEF] rounded-full mt-1.5 mr-2 flex-shrink-0"></div>
-                Position yourself in the center of the frame
-              </li>
-            </ul>
-          </div>
-
-          <div className="flex justify-between pt-4">
-            <button
-              onClick={onBack}
-              className="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-all duration-200 text-sm"
+        <AnimatePresence>
+          {removingBackground && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 flex items-center justify-center bg-navy/40"
+              role="status"
             >
-              <ArrowLeft className="w-4 h-4 mr-1" />
-              Back
-            </button>
-            
-            <button
-              onClick={handleSubmit}
-              disabled={!capturedImage}
-              className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-[#5D5FEF] to-[#7C3AED] text-white font-semibold rounded-lg hover:from-[#5D5FEF]/90 hover:to-[#7C3AED]/90 focus:outline-none focus:ring-2 focus:ring-[#5D5FEF] focus:ring-offset-2 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none text-sm"
-            >
-              <Check className="w-4 h-4 mr-2" />
-              Complete Registration
-            </button>
-          </div>
-        </div>
+              <span className="flex items-center gap-2 rounded-pill bg-card px-4 py-2 text-small font-medium text-ink shadow-card">
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                Removing background…
+              </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {capturedImage && !removingBackground && (
+          <motion.span
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25 }}
+            className="absolute left-4 top-4 flex items-center gap-1 rounded-pill bg-card px-3 py-1 text-caption font-medium text-pass shadow-card"
+          >
+            <Check className="h-3.5 w-3.5" aria-hidden />
+            Photo captured
+          </motion.span>
+        )}
+
+        <canvas ref={canvasRef} className="hidden" />
       </div>
+
+      <div className="mt-6 flex justify-center">
+        {!isStreaming && !capturedImage && (
+          <Button type="button" variant="outline" onClick={startCamera}>
+            <Camera className="h-4 w-4" aria-hidden />
+            Start camera
+          </Button>
+        )}
+        {isStreaming && (
+          <Button type="button" variant="outline" onClick={capturePhoto}>
+            <Camera className="h-4 w-4" aria-hidden />
+            Take photo
+          </Button>
+        )}
+        {capturedImage && (
+          <Button type="button" variant="outline" onClick={retakePhoto} disabled={removingBackground}>
+            <RotateCcw className="h-4 w-4" aria-hidden />
+            Retake
+          </Button>
+        )}
+      </div>
+
+      <AnimatePresence>
+        {displayError && (
+          <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="mt-6" role="alert">
+            <Callout tone="fail" title="Camera unavailable">{displayError}</Callout>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {missingPhoto && (
+        <p role="alert" className="mt-2 flex items-center justify-center gap-1 text-caption text-fail">
+          <AlertCircle className="h-3.5 w-3.5" aria-hidden />
+          Take a photo to continue
+        </p>
+      )}
+
+      <div className="mt-6">
+        <p className="mb-3 text-small font-medium">For a clear photo</p>
+        <ul className="grid grid-cols-1 gap-3 text-small text-ink-muted sm:grid-cols-2">
+          {[
+            'Look directly at the camera with a neutral expression',
+            'Make sure your face is well lit and clearly visible',
+            'Remove sunglasses, hats or anything covering your face',
+            'Keep your face centred in the frame'
+          ].map(item => (
+            <li key={item} className="flex items-start gap-2">
+              <Check className="mt-0.5 h-4 w-4 flex-none text-azure" aria-hidden />
+              {item}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <StepFooter>
+        <Button type="button" variant="outline" onClick={onBack}>
+          <ArrowLeft className="h-4 w-4" aria-hidden />
+          Back
+        </Button>
+        <Button type="button" onClick={handleSubmit} disabled={removingBackground}>
+          {submitLabel}
+        </Button>
+      </StepFooter>
     </div>
   );
 }
