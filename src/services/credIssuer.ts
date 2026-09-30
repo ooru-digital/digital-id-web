@@ -1,6 +1,7 @@
 import {
   buildCredentialIssueUrl,
   buildIssuedCredentialsUrl,
+  buildPresentationUrl,
   getCredIssuerHeaders,
   getCredIssuerStatusHeaders
 } from '../config/apiConfig';
@@ -94,6 +95,28 @@ export const fetchIssuanceStatus = async (
   }
 
   return response.json();
+};
+
+export const fetchPresentationPdfUrl = async (credentialId: string): Promise<string> => {
+  const response = await fetch(buildPresentationUrl(), {
+    method: 'POST',
+    headers: getCredIssuerHeaders(),
+    body: JSON.stringify({ credential_id: credentialId, presentation_type: 'pdf' })
+  });
+
+  if (!response.ok) {
+    const message = await extractErrorMessage(
+      response,
+      `Unable to prepare your PDF. (Error: ${response.status})`
+    );
+    throw new CredIssuerError(message, response.status);
+  }
+
+  const data: { file_path?: string } = await response.json();
+  if (!data.file_path) {
+    throw new CredIssuerError('PDF was requested but no file link was returned.');
+  }
+  return data.file_path;
 };
 
 export const isCompletedStatus = (status?: string | null): boolean =>

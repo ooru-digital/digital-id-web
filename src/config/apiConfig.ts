@@ -5,6 +5,7 @@ export interface APIConfig {
     baseUrl: string;
     issueEndpoint: string;
     issuedEndpoint: string;
+    presentationEndpoint: string;
     statusPollIntervalMs: number;
     statusPollTimeoutMs: number;
     credentialTemplateId: string;
@@ -25,6 +26,7 @@ export const apiConfig: APIConfig = {
     baseUrl: '/api/credentials',
     issueEndpoint: '/issue/client/bulk',
     issuedEndpoint: '/issued',
+    presentationEndpoint: '/presentation',
     statusPollIntervalMs: 3000,
     statusPollTimeoutMs: 5 * 60 * 1000,
     credentialTemplateId: env.VITE_CREDISSUER_TEMPLATE_ID || '',
@@ -53,6 +55,10 @@ export const buildIssuedCredentialsUrl = (transactionId: string): string => {
   const params = new URLSearchParams({ offset: '0', limit: '10' });
   return `${baseUrl}${issuedEndpoint}/${encodeURIComponent(transactionId)}?${params.toString()}`;
 };
+
+// Returns a signed CDN link to the credential's PDF presentation
+export const buildPresentationUrl = (): string =>
+  `${apiConfig.credIssuer.baseUrl}${apiConfig.credIssuer.presentationEndpoint}`;
 
 // Public endpoint returning a QR image that adds the credential to CredIssuer Wallet
 export const buildOfferQrUrl = (credentialId: string): string =>

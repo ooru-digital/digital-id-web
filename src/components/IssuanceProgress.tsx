@@ -22,7 +22,7 @@ const TIPS = [
 // The last check never completes here; a real Completed status unmounts this for the success screen.
 // Drive `ticked` from real status fields once the issuer reports them.
 const CHECKS = [
-  { active: 'Checking NID database', done: 'NID database check successful', description: 'Confirming your record in the National ID database.' },
+  { active: 'Checking NID database (Mocked)', done: 'NID database check successful (Mocked)', description: 'Confirming your record in the National ID database.' },
   { active: 'Matching your face (Mocked)', done: 'Face match successful (Mocked)', description: 'Comparing your selfie with your document photo.' },
   { active: 'Signing and issuing your Digital ID', done: 'Digital ID issued', description: 'Creating your verifiable credential with CredIssuer.' }
 ];

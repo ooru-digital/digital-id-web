@@ -5,7 +5,8 @@ import { buildOfferQrUrl } from '../config/apiConfig';
 import Callout from './ui/Callout';
 import Button from './ui/Button';
 import IdCardPreview, { type IdCardData } from './ui/IdCardPreview';
-import IssuedCard, { downloadCardPdf } from './ui/IssuedCard';
+import IssuedCard from './ui/IssuedCard';
+import { fetchPresentationPdfUrl } from '../services/credIssuer';
 
 interface SuccessScreenProps {
   onStartOver: () => void;
@@ -99,12 +100,7 @@ export default function SuccessScreen({ onStartOver, card, svgUrl, credentialId 
             ))}
           </ul>
 
-          {svgUrl && (
-            <Button type="button" className="self-start" onClick={() => downloadCardPdf(svgUrl)}>
-              <Download className="h-4 w-4" aria-hidden />
-              Download card (PDF)
-            </Button>
-          )}
+          {credentialId && <DownloadPdf credentialId={credentialId} />}
         </div>
       </div>
 
@@ -151,6 +147,38 @@ export default function SuccessScreen({ onStartOver, card, svgUrl, credentialId 
           Register another ID
         </Button>
       </div>
+    </div>
+  );
+}
+
+// Window is opened inside the tap: iOS Safari blocks window.open after an await
+function DownloadPdf({ credentialId }: { credentialId: string }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string>();
+
+  const handleClick = async () => {
+    const win = window.open('', '_blank');
+    setLoading(true);
+    setError(undefined);
+    try {
+      const url = await fetchPresentationPdfUrl(credentialId);
+      if (win) win.location.href = url;
+      else window.location.href = url;
+    } catch (e) {
+      win?.close();
+      setError(e instanceof Error ? e.message : 'Unable to prepare your PDF.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-2 self-start">
+      <Button type="button" onClick={handleClick} disabled={loading}>
+        <Download className="h-4 w-4" aria-hidden />
+        {loading ? 'Preparing PDF…' : 'Download card (PDF)'}
+      </Button>
+      {error && <p role="alert" className="text-caption text-fail">{error}</p>}
     </div>
   );
 }

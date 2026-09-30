@@ -15,22 +15,6 @@ const SVG_HEIGHT = 543;
 const FRONT = '31 23 390 231';
 const BACK = '31 289 390 231';
 
-// ponytail: browser print dialog ("Save as PDF") instead of a PDF library;
-// swap for jspdf if a one-click file download without the dialog is required.
-// Printed from a new top-level window: iOS Safari ignores print() on iframes and
-// only allows window.open inside the tap, so this must be called from a click handler.
-// If print() is blocked, the card page stays open for Share > Print / Save to Files.
-export function downloadCardPdf(svgUrl: string) {
-  const win = window.open('', '_blank');
-  if (!win) return;
-  const href = svgUrl.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-  const face = (viewBox: string) =>
-    `<svg viewBox="${viewBox}"><image href="${href}" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" preserveAspectRatio="none"/></svg>`;
-  // ID-1 card size (85.6mm wide), front above back; load waits for the card image
-  win.document.write(`<!doctype html><title>Digital ID</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>@page{margin:15mm}svg{display:block;width:85.6mm;max-width:100%;margin:0 auto 10mm}</style>${face(FRONT)}${face(BACK)}<script>addEventListener('load',()=>{addEventListener('afterprint',()=>close());print()})</script>`);
-  win.document.close();
-}
-
 const flipSpring ={ type: 'spring', stiffness: 70, damping: 13, mass: 0.9 } as const;
 
 export default function IssuedCard({ svgUrl, fallback }: IssuedCardProps) {
