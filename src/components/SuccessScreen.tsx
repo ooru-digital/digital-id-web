@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
-import { useState } from 'react';
-import { Check, Download, RotateCw } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Check, Copy, Download, Mail, RotateCw, Smartphone, X } from 'lucide-react';
 import { buildOfferQrUrl } from '../config/apiConfig';
 import Callout from './ui/Callout';
 import Button from './ui/Button';
@@ -21,6 +21,17 @@ const WALLET_STEPS = [
   { title: 'Scan this code', body: 'Tap Scan and point your camera at the QR code.' },
   { title: 'Accept your National ID', body: 'Review the details and accept to save it to your wallet.' }
 ];
+
+const WALLET_ANDROID_URL = 'https://drive.google.com/drive/folders/1QafLwz_ou6KKwqCdkYaEvPhaR2Vhb7d9';
+const WALLET_INFO_EMAIL = 'info@ooru.io';
+
+// iPadOS reports itself as a Mac, so a touch-capable "Mac" is treated as iOS
+function detectPlatform(): 'android' | 'ios' | 'desktop' {
+  const ua = navigator.userAgent;
+  if (/Android/i.test(ua)) return 'android';
+  if (/iPhone|iPad|iPod/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return 'ios';
+  return 'desktop';
+}
 
 const BENEFITS = [
   'Stored securely on your device',
@@ -98,9 +109,12 @@ export default function SuccessScreen({ onStartOver, card, svgUrl, credentialId 
       </div>
 
       <section className="rounded-lg bg-sand p-6 sm:p-12" aria-labelledby="wallet-heading">
-        <div className="mb-12 flex flex-col gap-2">
-          <h3 id="wallet-heading" className="text-display-28">Add It to CredIssuer Wallet</h3>
-          <p className="text-body text-ink-muted">Scan the code with the CredIssuer Wallet app to keep your National ID on your phone.</p>
+        <div className="mb-12 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex flex-col gap-2">
+            <h3 id="wallet-heading" className="text-display-28">Add It to CredIssuer Wallet</h3>
+            <p className="text-body text-ink-muted">Scan the code with the CredIssuer Wallet app to keep your National ID on your phone.</p>
+          </div>
+          <DownloadWallet />
         </div>
 
         <div className="grid items-center gap-12 lg:grid-cols-[auto_minmax(0,1fr)]">
@@ -137,6 +151,118 @@ export default function SuccessScreen({ onStartOver, card, svgUrl, credentialId 
           Register another ID
         </Button>
       </div>
+    </div>
+  );
+}
+
+function DownloadWallet() {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const [mode, setMode] = useState<'ios' | 'desktop'>('desktop');
+  const [copied, setCopied] = useState(false);
+
+  const open = () => {
+    const platform = detectPlatform();
+    if (platform === 'android') {
+      window.open(WALLET_ANDROID_URL, '_blank', 'noopener');
+      return;
+    }
+    setMode(platform);
+    setCopied(false);
+    dialogRef.current?.showModal();
+  };
+  const close = () => dialogRef.current?.close();
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(WALLET_ANDROID_URL);
+      setCopied(true);
+    } catch {
+      window.open(WALLET_ANDROID_URL, '_blank', 'noopener');
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-2 sm:items-end">
+      <p className="text-small text-ink-muted">Don&apos;t have the app yet?</p>
+      <Button type="button" variant="outline" className="self-start sm:self-auto" onClick={open}>
+        <Smartphone className="h-4 w-4" aria-hidden />
+        Download Wallet
+      </Button>
+
+      <dialog
+        ref={dialogRef}
+        aria-labelledby="wallet-dialog-title"
+        onClick={e => e.target === e.currentTarget && close()}
+        className="m-auto w-[calc(100%-2rem)] max-w-md rounded-lg bg-card text-ink shadow-card backdrop:bg-navy/50 backdrop:backdrop-blur-sm"
+      >
+        <div className="relative flex flex-col gap-6 p-6 sm:p-8">
+          <button
+            type="button"
+            onClick={close}
+            className="absolute right-4 top-4 rounded-pill p-2 text-ink-muted transition-colors hover:bg-sand hover:text-ink"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" aria-hidden />
+          </button>
+
+          {mode === 'desktop' ? (
+            <>
+              <div className="flex flex-col gap-2 pr-8">
+                <h4 id="wallet-dialog-title" className="text-lead-18 font-medium">Get CredIssuer Wallet</h4>
+                <p className="text-small text-ink-muted">Scan with your Android phone&apos;s camera to download the app.</p>
+              </div>
+
+              <div className="relative mx-auto p-4">
+                {CORNERS.map(c => (
+                  <span key={c} className={`absolute h-8 w-8 border-navy ${c}`} aria-hidden />
+                ))}
+                <img
+                  src="/brand/wallet-android-qr.svg"
+                  alt="QR code to download CredIssuer Wallet for Android"
+                  className="h-52 w-52 rounded-sm bg-card p-3"
+                />
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <Button type="button" variant="outline" size="sm" className="self-center" onClick={copyLink}>
+                  {copied ? <Check className="h-3.5 w-3.5 text-pass" aria-hidden /> : <Copy className="h-3.5 w-3.5" aria-hidden />}
+                  {copied ? 'Link copied' : 'Copy download link'}
+                </Button>
+                <p className="rounded-lg bg-sand px-4 py-3 text-center text-small text-ink-muted">
+                  On iPhone? The iOS app is coming soon. Reach out to{' '}
+                  <a href={`mailto:${WALLET_INFO_EMAIL}`} className="font-medium text-azure-ink hover:underline">{WALLET_INFO_EMAIL}</a>
+                  {' '}for early access.
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <span className="flex h-12 w-12 items-center justify-center rounded-pill bg-sand text-navy">
+                <Smartphone className="h-5 w-5" aria-hidden />
+              </span>
+              <div className="flex flex-col gap-2">
+                <h4 id="wallet-dialog-title" className="text-lead-18 font-medium">iOS app coming soon</h4>
+                <p className="text-small text-ink-muted">
+                  CredIssuer Wallet is available on Android today, and we&apos;re working on the iPhone version.
+                  For early access or more information, reach out to{' '}
+                  <span className="font-medium text-ink">{WALLET_INFO_EMAIL}</span>.
+                </p>
+                <p className="text-small text-ink-muted">Your Digital ID is already in your email, so nothing is lost in the meantime.</p>
+              </div>
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <a
+                  href={`mailto:${WALLET_INFO_EMAIL}?subject=${encodeURIComponent('CredIssuer Wallet for iOS')}`}
+                  className="inline-flex items-center justify-center gap-2 rounded-pill border border-transparent bg-navy px-6 py-3 text-label text-ink-on-strong transition-colors hover:bg-azure-ink"
+                >
+                  <Mail className="h-4 w-4" aria-hidden />
+                  Email {WALLET_INFO_EMAIL}
+                </a>
+                <Button type="button" variant="outline" onClick={close}>Close</Button>
+              </div>
+            </>
+          )}
+        </div>
+      </dialog>
     </div>
   );
 }
