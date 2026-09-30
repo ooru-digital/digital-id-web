@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
-import { useRef, useState } from 'react';
-import { Check, Copy, Download, Mail, RotateCw, Smartphone, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Check, Copy, Download, Loader2, Mail, MailCheck, RotateCw, ScanFace, ShieldCheck, Smartphone, WifiOff, X } from 'lucide-react';
 import { buildOfferQrUrl } from '../config/apiConfig';
 import Callout from './ui/Callout';
 import Button from './ui/Button';
@@ -34,11 +34,23 @@ function detectPlatform(): 'android' | 'ios' | 'desktop' {
   return 'desktop';
 }
 
-const BENEFITS = [
-  'Stored securely on your device',
-  'Available offline',
-  'Verified instantly by QR code',
-  'You choose what to share'
+const FEATURES = [
+  {
+    icon: ScanFace,
+    title: 'Face check built into the QR',
+    body: 'The QR on your card carries your face data, so a verifier can confirm the holder is you.',
+    tag: 'Works offline'
+  },
+  {
+    icon: ShieldCheck,
+    title: 'Tamper-proof',
+    body: 'Digitally signed. Any change to the card breaks the signature and fails verification.'
+  },
+  {
+    icon: MailCheck,
+    title: 'A copy is in your inbox',
+    body: 'We emailed your signed Digital ID, so you always have a backup.'
+  }
 ];
 
 export default function SuccessScreen({ onStartOver, card, svgUrl, credentialId }: SuccessScreenProps) {
@@ -58,8 +70,8 @@ export default function SuccessScreen({ onStartOver, card, svgUrl, credentialId 
           </motion.div>
         )}
 
-        <div className="flex flex-col gap-6">
-          <div className="flex items-center gap-4">
+        <div className="flex flex-col gap-8">
+          <div className="flex items-start gap-4">
             <svg viewBox="0 0 48 48" className="h-12 w-12 flex-none text-pass" aria-hidden>
               <motion.circle
                 cx="24" cy="24" r="22" fill="none" stroke="currentColor" strokeWidth="2"
@@ -71,32 +83,45 @@ export default function SuccessScreen({ onStartOver, card, svgUrl, credentialId 
                 initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.4, ease, delay: 0.5 }}
               />
             </svg>
-            <div className="flex flex-col gap-1">
-              <p className="text-lead-18 text-pass">Issued</p>
-              <p className="text-small text-ink-muted">Your Digital ID has been signed and sent to your email.</p>
-              <p className="text-small text-ink-muted">QR contains face biometric data. Can be used for face authentication offline.</p>
+            <div className="flex flex-col gap-2">
+              <p className="text-caption font-medium uppercase tracking-widest text-pass">Issued</p>
+              <h2 className="text-display-32">Your Digital ID is ready</h2>
+              <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-small text-ink-muted">
+                Signed &amp; issued via
+                <img src="/brand/credissuer-logo.svg" alt="CredIssuer" className="h-4 w-auto" />
+              </p>
             </div>
           </div>
 
-          <motion.p
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, ease, delay: 0.9 }}
-            className="flex items-center gap-2 self-start rounded-pill border border-credissuer/25 bg-credissuer/5 py-1.5 pl-2 pr-4 text-small text-ink-muted"
-          >
-            <span className="flex h-5 w-5 flex-none items-center justify-center rounded-pill bg-credissuer text-ink-on-strong">
-              <Check className="h-3 w-3" aria-hidden />
-            </span>
-            Signed &amp; issued via
-            <img src="/brand/credissuer-logo.svg" alt="CredIssuer" className="h-4 w-auto" />
-          </motion.p>
-
-          <ul className="grid grid-cols-1 gap-3 text-small sm:grid-cols-2">
-            {BENEFITS.map(item => (
-              <li key={item} className="flex items-start gap-2">
-                <Check className="mt-0.5 h-4 w-4 flex-none text-azure" aria-hidden />
-                {item}
-              </li>
+          <ul className="flex flex-col divide-y divide-line/60 rounded-lg bg-card shadow-card">
+            {FEATURES.map(({ icon: Icon, title, body, tag }, index) => (
+              <motion.li
+                key={title}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, ease, delay: 0.7 + index * 0.08 }}
+                className="flex gap-4 p-5"
+              >
+                <span
+                  className={`flex h-10 w-10 flex-none items-center justify-center rounded-sm ${
+                    index === 0 ? 'bg-navy text-cyan' : 'bg-sand text-navy'
+                  }`}
+                >
+                  <Icon className="h-5 w-5" aria-hidden />
+                </span>
+                <div className="flex flex-col gap-1">
+                  <p className="flex flex-wrap items-center gap-2 text-label">
+                    {title}
+                    {tag && (
+                      <span className="inline-flex items-center gap-1 rounded-pill bg-pass/10 px-2 py-0.5 text-caption font-medium text-pass">
+                        <WifiOff className="h-3 w-3" aria-hidden />
+                        {tag}
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-small leading-5 text-ink-muted">{body}</p>
+                </div>
+              </motion.li>
             ))}
           </ul>
 
@@ -151,34 +176,119 @@ export default function SuccessScreen({ onStartOver, card, svgUrl, credentialId 
   );
 }
 
-// Window is opened inside the tap: iOS Safari blocks window.open after an await
+// Fetched as a blob so the download stays on this page: browsers ignore
+// <a download> on cross-origin URLs and navigate instead
+async function saveFile(url: string, filename: string) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Download failed (${response.status})`);
+  const blobUrl = URL.createObjectURL(await response.blob());
+  const link = document.createElement('a');
+  link.href = blobUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+}
+
+type PdfStatus = 'idle' | 'preparing' | 'downloading' | 'done';
+
+const PDF_STEPS: Record<Exclude<PdfStatus, 'idle'>, { title: string; body: string }> = {
+  preparing: { title: 'Preparing your Digital ID', body: 'Generating your print-ready PDF. This can take a few seconds.' },
+  downloading: { title: 'Downloading…', body: 'Saving the PDF to your device.' },
+  done: { title: 'Download complete', body: 'Check your Downloads folder.' }
+};
+
 function DownloadPdf({ credentialId }: { credentialId: string }) {
-  const [loading, setLoading] = useState(false);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const [status, setStatus] = useState<PdfStatus>('idle');
   const [error, setError] = useState<string>();
+  const loading = status === 'preparing' || status === 'downloading';
+
+  // Dialog mirrors status: open while working or done, closed when idle
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (status === 'idle') dialog?.close();
+    else if (!dialog?.open) dialog?.showModal();
+    if (status !== 'done') return;
+    const timer = setTimeout(() => setStatus('idle'), 3000);
+    return () => clearTimeout(timer);
+  }, [status]);
+
+  const close = () => setStatus('idle');
 
   const handleClick = async () => {
-    const win = window.open('', '_blank');
-    setLoading(true);
+    setStatus('preparing');
     setError(undefined);
     try {
       const url = await fetchPresentationPdfUrl(credentialId);
-      if (win) win.location.href = url;
-      else window.location.href = url;
+      setStatus('downloading');
+      try {
+        await saveFile(url, 'digital-id.pdf');
+        setStatus('done');
+      } catch {
+        // ponytail: blob fetch fails when the PDF host lacks CORS; fall back to opening it
+        setStatus('idle');
+        if (!window.open(url, '_blank')) window.location.href = url;
+      }
     } catch (e) {
-      win?.close();
+      setStatus('idle');
       setError(e instanceof Error ? e.message : 'Unable to prepare your PDF.');
-    } finally {
-      setLoading(false);
     }
   };
 
+  const step = status === 'idle' ? undefined : PDF_STEPS[status];
+
   return (
-    <div className="flex flex-col gap-2 self-start">
-      <Button type="button" onClick={handleClick} disabled={loading}>
-        <Download className="h-4 w-4" aria-hidden />
-        {loading ? 'Preparing PDF…' : 'Download card (PDF)'}
-      </Button>
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+        <Button type="button" className="self-start" onClick={handleClick} loading={loading}>
+          {!loading && <Download className="h-4 w-4" aria-hidden />}
+          {loading ? 'Preparing PDF…' : 'Download card (PDF)'}
+        </Button>
+        <p className="text-caption text-ink-muted">Print-ready, with the verifiable QR.</p>
+      </div>
       {error && <p role="alert" className="text-caption text-fail">{error}</p>}
+
+      <dialog
+        ref={dialogRef}
+        aria-labelledby="pdf-dialog-title"
+        aria-describedby="pdf-dialog-body"
+        onCancel={e => { e.preventDefault(); if (!loading) close(); }}
+        onClick={e => !loading && e.target === e.currentTarget && close()}
+        className="m-auto w-[calc(100%-2rem)] max-w-sm rounded-lg bg-card text-ink shadow-card backdrop:bg-navy/50 backdrop:backdrop-blur-sm"
+      >
+        {step && (
+          <div className="relative flex flex-col items-center gap-5 p-6 text-center sm:p-8">
+            {status === 'done' && (
+              <button
+                type="button"
+                onClick={close}
+                className="absolute right-4 top-4 rounded-pill p-2 text-ink-muted transition-colors hover:bg-sand hover:text-ink"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" aria-hidden />
+              </button>
+            )}
+            <span
+              className={`flex h-14 w-14 items-center justify-center rounded-pill ${
+                status === 'done' ? 'bg-pass/10 text-pass' : 'bg-sand text-navy'
+              }`}
+            >
+              {status === 'done'
+                ? <Check className="h-6 w-6" aria-hidden />
+                : <Loader2 className="h-6 w-6 animate-spin" aria-hidden />}
+            </span>
+            <div aria-live="polite" className="flex flex-col gap-2">
+              <h4 id="pdf-dialog-title" className="text-lead-18 font-medium">{step.title}</h4>
+              <p id="pdf-dialog-body" className="text-small text-ink-muted">{step.body}</p>
+            </div>
+            {status === 'done' && (
+              <Button type="button" variant="outline" size="sm" onClick={close}>Done</Button>
+            )}
+          </div>
+        )}
+      </dialog>
     </div>
   );
 }
