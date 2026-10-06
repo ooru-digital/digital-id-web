@@ -12,13 +12,12 @@ RUN npm ci
 # Copy the rest of the source code
 COPY . .
 
-# Issuer settings are baked into the bundle at build time
-ARG VITE_ISSUER_API_TOKEN
+# Non-secret issuer settings are baked into the bundle at build time.
+# The API token is NOT a build argument: nginx reads ISSUER_API_TOKEN at runtime.
 ARG VITE_ISSUER_TEMPLATE_ID
 ARG VITE_ISSUER_ORG_CODE
 ARG VITE_ISSUER_EMAIL
-ENV VITE_ISSUER_API_TOKEN=$VITE_ISSUER_API_TOKEN \
-    VITE_ISSUER_TEMPLATE_ID=$VITE_ISSUER_TEMPLATE_ID \
+ENV VITE_ISSUER_TEMPLATE_ID=$VITE_ISSUER_TEMPLATE_ID \
     VITE_ISSUER_ORG_CODE=$VITE_ISSUER_ORG_CODE \
     VITE_ISSUER_EMAIL=$VITE_ISSUER_EMAIL
 
@@ -34,8 +33,11 @@ RUN rm -rf /usr/share/nginx/html/*
 # Copy built frontend from build stage
 COPY --from=build /app/dist /usr/share/nginx/html
 
-# Copy a custom nginx config (optional, see below)
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# The nginx image renders templates into conf.d at startup, substituting only env vars
+# matching the filter, so nginx's own $variables are left alone.
+# ISSUER_API_TOKEN must be set when the container starts, or nginx refuses to start.
+ENV NGINX_ENVSUBST_FILTER=^ISSUER_
+COPY nginx.conf /etc/nginx/templates/default.conf.template
 
 # Expose port 80
 EXPOSE 80

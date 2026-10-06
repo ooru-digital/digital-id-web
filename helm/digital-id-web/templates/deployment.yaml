@@ -40,6 +40,12 @@ spec:
           {{- end }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: ISSUER_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.issuer.apiTokenSecret.name }}
+                  key: {{ .Values.issuer.apiTokenSecret.key }}
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}

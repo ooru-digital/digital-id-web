@@ -31,7 +31,7 @@ cp .env.example .env.local   # then fill in the values
 npm run dev
 ```
 
-The dev server runs at `http://localhost:5173`. It proxies `/api/credentials` to the issuance API (see `server.proxy` in `vite.config.ts`).
+The dev server runs at `http://localhost:5173`. It proxies `/api/credentials` to the issuance API and adds the `Authorization` header from `ISSUER_API_TOKEN` (see `server.proxy` in `vite.config.ts`).
 
 ### Scripts
 
@@ -44,14 +44,17 @@ The dev server runs at `http://localhost:5173`. It proxies `/api/credentials` to
 
 ## Configuration
 
-These values are read at build time from `.env.local`, or from Docker build arguments:
+| Variable | When it's read | Description |
+| --- | --- | --- |
+| `ISSUER_API_TOKEN` | At runtime, by the proxy | Bearer token for the issuance API. Never included in the browser bundle |
+| `VITE_ISSUER_TEMPLATE_ID` | At build time | Credential template that the Digital ID is issued from |
+| `VITE_ISSUER_ORG_CODE` | At build time | Issuing organisation code |
+| `VITE_ISSUER_EMAIL` | At build time | Email address of the issuing account |
 
-| Variable | Description |
-| --- | --- |
-| `VITE_ISSUER_API_TOKEN` | Bearer token for the issuance API |
-| `VITE_ISSUER_TEMPLATE_ID` | Credential template that the Digital ID is issued from |
-| `VITE_ISSUER_ORG_CODE` | Issuing organisation code |
-| `VITE_ISSUER_EMAIL` | Email address of the issuing account |
+For local development, all four go in `.env.local`. In production:
+
+- the `VITE_*` values are Docker build arguments
+- `ISSUER_API_TOKEN` is an environment variable on the running container, which nginx uses to add the `Authorization` header to proxied issuer requests
 
 Other settings live in code:
 
@@ -84,20 +87,31 @@ Dockerfile                   Multi-stage build: Node build, then nginx runtime
 
 ### Docker
 
+The image is built without the token. The token is passed to the running container instead:
+
 ```bash
 docker build \
-  --build-arg VITE_ISSUER_API_TOKEN=... \
   --build-arg VITE_ISSUER_TEMPLATE_ID=... \
   --build-arg VITE_ISSUER_ORG_CODE=... \
   --build-arg VITE_ISSUER_EMAIL=... \
   -t digital-id-web .
 
-docker run -p 8080:80 digital-id-web
+docker run -p 8080:80 -e ISSUER_API_TOKEN=... digital-id-web
 ```
+
+At startup, nginx inserts `ISSUER_API_TOKEN` into its config and adds `Authorization: Bearer <token>` to requests it forwards to the issuance API. If the variable isn't set, nginx refuses to start.
 
 ### Kubernetes (Helm)
 
-Set `image.repository`, `image.tag` and `ingress.hosts` in `helm/digital-id-web/values.yaml`, or override them on the command line, and then install:
+The chart reads the token from an existing Kubernetes Secret, so it never appears in the image or in Helm values. Create the Secret first:
+
+```bash
+kubectl create secret generic digital-id-web-issuer --from-literal=api-token=<token>
+```
+
+To use a different Secret name or key, change `issuer.apiTokenSecret` in `helm/digital-id-web/values.yaml`.
+
+Then set `image.repository`, `image.tag` and `ingress.hosts`, in `values.yaml` or on the command line, and install:
 
 ```bash
 helm upgrade --install digital-id-web ./helm/digital-id-web \
@@ -108,7 +122,8 @@ helm upgrade --install digital-id-web ./helm/digital-id-web \
 
 ## Security and privacy
 
-- **Build-time variables are public.** Vite inlines every `VITE_*` variable into the JavaScript bundle, so anyone who loads the app can read the API token. Use a token restricted to issuance for a single template, rotate it regularly, and prefer adding the `Authorization` header at the reverse proxy so the token never reaches the browser.
+- **The API token stays on the server.** The browser never receives it: nginx in production, and the Vite dev server locally, add the `Authorization` header when forwarding requests. nginx only forwards the three calls the portal makes (issue, issuance status and PDF presentation) and refuses any other `/api/credentials/` path. Even so, use a token limited to issuance for a single template, and rotate it regularly.
+- **Build-time variables are public.** Vite inlines every `VITE_*` variable into the JavaScript bundle, so never put a secret in one.
 - **Never commit secrets.** `.env.local` is gitignored. Only `.env.example`, with empty values, belongs in the repository.
 - **Drafts are stored unencrypted.** Unfinished applications, including the selfie, are kept in the browser's `localStorage` until the application is submitted or the user starts over. Don't rely on this on shared devices.
 - **Reporting a vulnerability:** use GitHub's private vulnerability reporting on this repository. Please don't open a public issue.

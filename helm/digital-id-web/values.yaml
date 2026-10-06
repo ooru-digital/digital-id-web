@@ -13,6 +13,14 @@ image:
   # Overrides the image tag whose default is the chart appVersion.
   tag: v1.0.9
 
+# Existing Secret holding the issuance API token. nginx adds it to proxied issuer requests,
+# so it never reaches the browser. Create it before installing, e.g.:
+#   kubectl create secret generic digital-id-web-issuer --from-literal=api-token=<token>
+issuer:
+  apiTokenSecret:
+    name: digital-id-web-issuer
+    key: api-token
+
 # This is for the secrets for pulling an image from a private repository more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
 imagePullSecrets: []
 # This is to override the chart name.

@@ -23,7 +23,7 @@ sequenceDiagram
 
     Applicant->>Portal: Details + selfie, then "Issue"
     Portal->>Proxy: POST /api/credentials/issue/client/bulk
-    Proxy->>CI: POST /api/credentials/issue/client/bulk
+    Proxy->>CI: same request + Authorization: Bearer <token>
     CI-->>Portal: 200 { transaction_id, ... }
 
     loop Every 3 s, for up to 5 min
@@ -54,7 +54,7 @@ sequenceDiagram
 
 | File | Responsibility |
 | --- | --- |
-| `src/config/apiConfig.ts` | Base path, endpoint paths, polling timings, query parameters, auth headers and URL builders |
+| `src/config/apiConfig.ts` | Base path, endpoint paths, polling timings, query parameters, request headers and URL builders |
 | `src/services/credIssuer.ts` | API client: issue, poll status, request PDF; response types; status classification; error parsing |
 | `src/hooks/useIssuanceStatusPolling.ts` | Polling loop: interval, timeout, consecutive-error limit, completion and failure callbacks |
 | `src/utils/digitalIdCredential.ts` | Builds the `credential_data` record: field mapping, MRZ, photo encoding, fixed values |
@@ -62,19 +62,21 @@ sequenceDiagram
 | `src/components/SuccessScreen.tsx` | Wallet QR, wallet download links, PDF download |
 | `src/components/ui/IssuedCard.tsx` | Renders the issued card SVG, cropped into front and back faces |
 | `src/components/IssuanceProgress.tsx` | Progress screen copy and CredIssuer branding |
-| `nginx.conf`, `vite.config.ts` | Reverse proxy from `/api/credentials` to the upstream API |
-| `Dockerfile`, `.env.example` | Build-time configuration |
+| `nginx.conf`, `vite.config.ts` | Reverse proxy from `/api/credentials` to the upstream API. Adds the `Authorization` header |
+| `Dockerfile`, `.env.example`, `helm/` | Build-time and runtime configuration |
 
 ### Configuration
 
-The portal needs four values from your CredIssuer account, set in `.env.local` or as Docker build arguments:
+The portal needs four values from your CredIssuer account. For local development, put all four in `.env.local`.
 
-| Variable | What it is in CredIssuer | Where the portal sends it |
+| Variable | What it is in CredIssuer | Where it's used |
 | --- | --- | --- |
-| `VITE_ISSUER_API_TOKEN` | API token for the issuing organisation | `Authorization: Bearer <token>` header on every proxied call |
+| `ISSUER_API_TOKEN` | API token for the issuing organisation | Added by the proxy as `Authorization: Bearer <token>`. Read at runtime and never sent to the browser |
 | `VITE_ISSUER_TEMPLATE_ID` | ID of the Digital ID credential template | `credential_template` query parameter and `issuer_credential_template_id` in the body |
 | `VITE_ISSUER_ORG_CODE` | Code of the issuing organisation | `issuer_info.org_code` in the body |
 | `VITE_ISSUER_EMAIL` | Email address of the issuer account | `issuer_info.email` in the body |
+
+In production, the three `VITE_*` values are Docker build arguments that get built into the JavaScript bundle. `ISSUER_API_TOKEN` is an environment variable on the running container; the Helm chart reads it from a Kubernetes Secret (`issuer.apiTokenSecret` in `values.yaml`).
 
 The following are hard-coded in `src/config/apiConfig.ts`:
 
@@ -87,16 +89,22 @@ The following are hard-coded in `src/config/apiConfig.ts`:
 
 ### Why requests go through a proxy
 
-The browser calls the relative path `/api/credentials/...`, and a proxy forwards it to the CredIssuer host. This avoids cross-origin (CORS) restrictions and keeps the upstream host out of the frontend code.
+The browser calls the relative path `/api/credentials/...`, and a proxy forwards it to the CredIssuer host. This does three things:
 
-- **Production:** the `location /api/credentials/` block in `nginx.conf`
-- **Development:** `server.proxy['/api/credentials']` in `vite.config.ts`
+- it avoids cross-origin (CORS) restrictions
+- it keeps the upstream host out of the frontend code
+- it keeps the API token on the server, because the proxy adds the `Authorization` header itself
+
+The proxy is configured in two places:
+
+- **Production:** the `/api/credentials/` locations in `nginx.conf`. The file is installed as an nginx template, so `${ISSUER_API_TOKEN}` is filled in from the container's environment at startup. Only the three calls below are forwarded; any other `/api/credentials/` path returns `404`, so the proxy can't be used to call other CredIssuer APIs with the token.
+- **Development:** `server.proxy['/api/credentials']` in `vite.config.ts`, which reads `ISSUER_API_TOKEN` from `.env.local`
 
 Two kinds of resource bypass the proxy and are loaded straight from CredIssuer by the browser: the wallet offer QR image and the URLs CredIssuer returns (`svg_url`, `file_path`).
 
 ## CredIssuer API calls
 
-All proxied calls send `Authorization: Bearer <VITE_ISSUER_API_TOKEN>`.
+The examples show requests as they reach CredIssuer. The browser sends them without the `Authorization` header, and the proxy adds `Authorization: Bearer <ISSUER_API_TOKEN>` on the way through.
 
 ### 1. Issue credential
 
@@ -241,38 +249,51 @@ The four values in `.env.example` exist because CredIssuer's issuance API asks f
 
 | CredIssuer setting | Typical equivalent in another engine |
 | --- | --- |
-| `VITE_ISSUER_API_TOKEN` (bearer token) | An API key in a custom header, an OAuth client ID and secret, or mutual TLS |
+| `ISSUER_API_TOKEN` (bearer token, added by the proxy) | An API key in a custom header, an OAuth client ID and secret, or mutual TLS |
 | `VITE_ISSUER_TEMPLATE_ID` | A credential type, schema ID or credential configuration ID |
 | `VITE_ISSUER_ORG_CODE` and `VITE_ISSUER_EMAIL` | An issuer DID or tenant ID, or nothing if the API key already identifies the issuer |
 
-To add, rename or remove a setting, update all of these places together:
+How you change a setting depends on whether it's a secret.
 
-1. **`.env.example`:** list the new variables (keep the `VITE_` prefix, or Vite won't expose them).
+**Secrets (tokens, API keys, client secrets)** must stay on the server side, like `ISSUER_API_TOKEN` does now:
+
+1. **`nginx.conf`:** add or change the `proxy_set_header` line in the issuer `location`, for example `proxy_set_header X-Api-Key "${ISSUER_API_KEY}";`. Only variables matching `NGINX_ENVSUBST_FILTER` (`^ISSUER_` in the `Dockerfile`) are filled in.
+2. **`vite.config.ts`:** add the same header in `server.proxy` so local development works. `loadEnv` already loads every `ISSUER_*` variable from `.env.local`.
+3. **`.env.example`:** list the variable without the `VITE_` prefix.
+4. **`helm/digital-id-web/templates/deployment.yaml` and `values.yaml`:** pass the variable to the container from a Kubernetes Secret, as `issuer.apiTokenSecret` does.
+
+If your engine needs something a static header can't do, such as fetching OAuth tokens or signing requests, a static proxy isn't enough. Put a small backend between the portal and the engine instead.
+
+**Non-secret values (template ID, issuer identifiers)** are built into the frontend:
+
+1. **`.env.example`:** list the new variables. Keep the `VITE_` prefix, or Vite won't expose them to the app.
 2. **`src/vite-env.d.ts`:** declare their types on `ImportMetaEnv`.
 3. **`src/config/apiConfig.ts`:** update the `APIConfig` interface and the `apiConfig` object that reads `import.meta.env`.
 4. **The code that sends them:**
-   - `buildCredentialIssueUrl` (query parameters) and `getCredIssuerHeaders` / `getCredIssuerStatusHeaders` (auth) in `apiConfig.ts`
+   - `buildCredentialIssueUrl` (query parameters) in `apiConfig.ts`
    - the `issuer_info` and template ID in `handleIssueDigitalId` in `src/App.tsx`
 5. **`Dockerfile`:** add a matching `ARG` and `ENV` line for each variable.
 6. **Your CI or deployment scripts:** pass the new `--build-arg` values.
 
-> **Don't put secrets in `VITE_` variables.** They are copied into the JavaScript that every visitor downloads. If your engine needs a client secret or a private key, keep it on the server side: have the reverse proxy or a small backend add it to the upstream request. See [Security considerations](#security-considerations).
+> **Don't put secrets in `VITE_` variables.** They are copied into the JavaScript that every visitor downloads. See [Security considerations](#security-considerations).
 
 With the configuration sorted out, choose one of two approaches. Option A keeps almost the whole frontend unchanged. Option B changes the frontend to call your engine's API directly.
 
 ### Option A: Expose a CredIssuer-compatible API (minimal frontend changes)
 
-Build an adapter service that speaks the contract described above and translates it to your engine. The adapter receives the four CredIssuer values in each request (the bearer token, `credential_template`, `org_code` and `email`). It can map them to your engine's own settings, or ignore them and use its own server-side configuration, which is safer. Then point the proxy at that service:
+Build an adapter service that speaks the contract described above and translates it to your engine. The adapter receives the four CredIssuer values in each request: the bearer token added by the proxy, plus `credential_template`, `org_code` and `email`. It can map them to your engine's own settings, or ignore them and use its own server-side configuration, which is safer. Then point the proxy at that service by changing the upstream in the issuer `location` in `nginx.conf`:
 
 ```nginx
-location /api/credentials/ {
-    proxy_pass https://your-adapter.example.com/api/credentials/;
+location ~ ^/api/credentials/(issue/client/bulk|issued/[^/]+|presentation)$ {
+    proxy_pass https://your-adapter.example.com;
     proxy_ssl_server_name on;
     proxy_set_header Host your-adapter.example.com;
+    proxy_set_header Authorization "Bearer ${ISSUER_API_TOKEN}";
+    # ...keep the X-Forwarded-* headers
 }
 ```
 
-Make the same change in `vite.config.ts` for local development.
+Make the same change to `target` in `vite.config.ts` for local development.
 
 Minimum contract the adapter must implement:
 
@@ -294,11 +315,15 @@ This option is the least risky: apart from the proxy target and the wallet QR UR
 
 Work through these files in order.
 
-1. **Proxy target.** Change `proxy_pass` and `Host` in `nginx.conf`, and `target` in `vite.config.ts`. If your API lives under a different path, change `baseUrl` in `apiConfig.ts` and the proxy `location` together.
+1. **Proxy target and auth.**
+   - In `nginx.conf`, change `proxy_pass` and `Host`, and update the issuer `location` pattern to your endpoint paths. The pattern is an allow-list: paths it doesn't match return `404`.
+   - Replace the `Authorization` header with whatever your engine expects (see [The configuration settings are CredIssuer-specific](#the-configuration-settings-are-credissuer-specific)).
+   - Make the matching `target` and `headers` changes in `vite.config.ts`.
+   - If your API lives under a different path, change `baseUrl` in `apiConfig.ts` and the proxy locations together.
 2. **Endpoints and parameters** in `src/config/apiConfig.ts`:
    - Update `issueEndpoint`, `issuedEndpoint` and `presentationEndpoint`.
    - Update the query parameters in `buildCredentialIssueUrl` (`credential_template`, `mode_of_issuance`) and `buildIssuedCredentialsUrl` (`offset`, `limit`).
-   - Update the auth scheme in `getCredIssuerHeaders` and `getCredIssuerStatusHeaders`, for example for an API key header or OAuth.
+   - Update `getCredIssuerHeaders` if your engine needs other non-secret headers. Credentials never go here, because the proxy adds them.
    - Point `buildOfferQrUrl` at your wallet offer, or remove it.
 3. **Request payload** in `src/utils/digitalIdCredential.ts`. Reshape `DigitalIdCredentialData` and `buildDigitalIdCredentialData` to your engine's format: attribute names, date format, photo encoding (inline base64 or an upload) and the MRZ fields. Update or remove `MOCKED_DETAILS`. The `issuer_info` wrapper is built in `handleIssueDigitalId` in `src/App.tsx`.
 4. **API client** in `src/services/credIssuer.ts`:
@@ -327,7 +352,8 @@ Work through these files in order.
 
 ## Security considerations
 
-- **The API token is visible in the browser.** Vite builds `VITE_ISSUER_API_TOKEN` into the JavaScript bundle, so any visitor can read it. For production, have the proxy add the `Authorization` header (for example through an nginx env template fed from a Kubernetes Secret) or use a small backend-for-frontend. Then remove the token from the frontend.
+- **The API token stays on the server.** The browser never sees `ISSUER_API_TOKEN`. nginx adds it at runtime from the container's environment, which the Helm chart fills from a Kubernetes Secret. Keep it that way with any engine: never move a credential into a `VITE_*` variable or into `getCredIssuerHeaders`.
+- **The proxy is an allow-list.** Because the proxy attaches the token, anyone who can reach the portal can send requests through it. nginx therefore forwards only the three issuance calls and returns `404` for everything else under `/api/credentials/`. Keep the allow-list as small as possible when you change endpoints, and consider rate limiting (`limit_req`) on the issue call.
 - **Scope the credential.** Whatever engine you use, give the portal's credential issuance-only rights for the one Digital ID template.
 - **Personal data in transit.** The selfie and identity data are sent inline in the JSON body. Use HTTPS end to end, including from the proxy to the upstream.
 - **Drafts.** Applicant details and the selfie are saved unencrypted in `localStorage` until the application is submitted or the applicant starts over.
@@ -344,4 +370,6 @@ Work through these files in order.
    - Stop the upstream mid-poll, which should fail after five consecutive errors.
    - Reuse an ID number that has already been issued.
 4. Click **Download card (PDF)** and confirm that the file saves.
-5. Build the Docker image and repeat the test against nginx to confirm the production proxy configuration.
+5. Build the Docker image, run it with `-e ISSUER_API_TOKEN=...`, and repeat the test against nginx to confirm the production proxy configuration. Also check two more things:
+   - In DevTools, no request from the browser carries an `Authorization` header, and searching the loaded JavaScript doesn't find the token.
+   - A request to a path outside the allow-list, such as `/api/credentials/anything`, returns `404`.
