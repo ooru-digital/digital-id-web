@@ -1,416 +1,412 @@
-import React, { useState } from 'react';
-import { Shield, Lock, User, FileText, Camera, CheckCircle } from 'lucide-react';
-import StepIndicator from './components/StepIndicator';
-import DocumentUpload from './components/DocumentUpload';
-import PersonalDetailsForm from './components/PersonalDetailsForm';
+import { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, MotionConfig, motion } from 'framer-motion';
+import BrandPanel from './components/BrandPanel';
+import { type IdCardData, mrzNameLine } from './components/ui/IdCardPreview';
+import Button from './components/ui/Button';
+import Callout from './components/ui/Callout';
+import PersonalDetailsForm, { emptyForm, type PersonalDetails } from './components/PersonalDetailsForm';
 import SelfieCapture from './components/SelfieCapture';
+import PhotoVerification from './components/PhotoVerification';
+import IssuanceProgress from './components/IssuanceProgress';
 import SuccessScreen from './components/SuccessScreen';
-import ProcessingScreen from './components/ProcessingScreen';
 import FailedScreen from './components/FailedScreen';
-import LoginPage from './components/LoginPage';
-import { apiConfig, buildUserCreationUrl } from './config/apiConfig';
+import { apiConfig } from './config/apiConfig';
+import { issueDigitalId, CredIssuerError } from './services/credIssuer';
+import { useIssuanceStatusPolling } from './hooks/useIssuanceStatusPolling';
+import { buildDigitalIdCredentialData, buildMrzLines, MOCKED_DETAILS } from './utils/digitalIdCredential';
 
-type Step = 'document' | 'personal' | 'selfie' | 'success' | 'failed';
+type Step = 'personal' | 'selfie' | 'photoVerification' | 'issuing' | 'success' | 'failed';
 
-interface PersonalDetails {
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  gender: string;
-  dateOfBirth: string;
-  nationalId: string;
-}
+const WIZARD_STEPS: Step[] = ['personal', 'selfie', 'photoVerification'];
+const STEP_LABELS = ['Details', 'Selfie', 'Review'];
+
+const ease = [0.22, 1, 0.36, 1] as const;
+
+const formatDate = (isoDate: string) =>
+  isoDate && new Date(`${isoDate}T00:00:00Z`).toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC'
+  });
+
+const toIdCardData = (details: PersonalDetails, selfie?: string): IdCardData => {
+  const { line1, line2 } = buildMrzLines(details);
+  return {
+    givenName: details.givenName,
+    surName: details.surName,
+    documentNumber: details.nrcNumber,
+    dateOfBirth: formatDate(details.dateOfBirth),
+    nationality: MOCKED_DETAILS.nationality,
+    sex: details.sex === 'Male' ? 'M' : details.sex === 'Female' ? 'F' : details.sex ? 'X' : '',
+    mrz: [line1, line2, mrzNameLine(details.surName, details.givenName)],
+    photo: selfie
+  };
+};
+
+// Step content slides in the direction of travel
+const stepVariants = {
+  enter: (direction: number) => ({ opacity: 0, x: direction * 32 }),
+  center: { opacity: 1, x: 0 },
+  exit: (direction: number) => ({ opacity: 0, x: direction * -32 })
+};
 
 interface RegistrationData {
   personalDetails?: PersonalDetails;
-  document?: File;
   selfie?: string;
-  userId?: string;
-  extractedData?: any;
 }
 
-interface UserCreationResponse {
-  message: string;
+interface Draft {
+  data: RegistrationData;
+  step: Step;
+  savedAt: number;
 }
 
-interface User {
-  id: string;
-  name: string;
-  email: string;
-}
+// ponytail: draft (details + selfie) sits unencrypted in this browser's localStorage until issue or
+// start over; move to a server-side draft API if applicants use shared devices.
+const DRAFT_KEY = 'ooru-draft';
+
+const readDraft = (): Draft | null => {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeDraft = (draft: Draft) => {
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    return true;
+  } catch {
+    return false; // storage full or blocked: the wizard still works, it just can't resume
+  }
+};
+
+const removeDraft = () => {
+  try {
+    localStorage.removeItem(DRAFT_KEY);
+  } catch {
+    // nothing to clean up
+  }
+};
+
+const formatSavedAt = (timestamp: number) =>
+  new Date(timestamp).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
-  const [currentStep, setCurrentStep] = useState<Step>('document');
+  const [currentStep, setCurrentStep] = useState<Step>('personal');
   const [registrationData, setRegistrationData] = useState<RegistrationData>({});
+  // Unsaved values from the details form, shown live on the rail card
+  const [draftDetails, setDraftDetails] = useState<PersonalDetails>();
   const [error, setError] = useState('');
+  const [transactionId, setTransactionId] = useState<string | null>(null);
+  const [svgUrl, setSvgUrl] = useState<string>();
+  const [credentialId, setCredentialId] = useState<string>();
+  const [savedAt, setSavedAt] = useState<number>();
+  const [resumedAt, setResumedAt] = useState<number>();
+  // Set when the user leaves Review to change something; the edited step then returns straight to Review
+  const [returnToReview, setReturnToReview] = useState(false);
+  const issuanceStatus = useIssuanceStatusPolling(
+    currentStep === 'issuing' ? transactionId : null,
+    {
+      onCompleted: (url, id) => {
+        setSvgUrl(url);
+        setCredentialId(id);
+        removeDraft();
+        setSavedAt(undefined);
+        setCurrentStep('success');
+      },
+      onFailed: (message) => {
+        setError(message);
+        setCurrentStep('failed');
+      }
+    }
+  );
 
-  const handleLogin = (userData: User) => {
-    setUser(userData);
-    setIsAuthenticated(true);
+  const resetIssuance = () => {
+    setTransactionId(null);
+    setSvgUrl(undefined);
+    setCredentialId(undefined);
   };
 
-  const handleLogout = () => {
-    setUser(null);
-    setIsAuthenticated(false);
-    setCurrentStep('document');
-    setRegistrationData({});
+  const restoreDraft = () => {
+    const draft = readDraft();
+    if (!draft || !WIZARD_STEPS.includes(draft.step)) return;
+    setRegistrationData(draft.data);
+    setCurrentStep(draft.step);
+    setSavedAt(draft.savedAt);
+    setResumedAt(draft.savedAt);
+  };
+
+  // A draft saved on an earlier visit resumes on reload
+  useEffect(() => {
+    restoreDraft();
+  }, []);
+
+  const goTo = (step: Step) => {
     setError('');
-  };
-
-  const handleDocumentUpload = (file: File, extractedData?: any) => {
-    setRegistrationData(prev => ({ 
-      ...prev, 
-      document: file,
-      extractedData: extractedData 
-    }));
-    setCurrentStep('personal');
+    setResumedAt(undefined);
+    if (step === 'photoVerification') setReturnToReview(false);
+    setCurrentStep(step);
   };
 
   const handlePersonalDetails = (details: PersonalDetails) => {
     setRegistrationData(prev => ({ ...prev, personalDetails: details }));
-    setCurrentStep('selfie');
+    goTo(returnToReview ? 'photoVerification' : 'selfie');
   };
 
-  // Helper function to remove country code from phone number
-  const removeCountryCode = (phoneNumber: string): string => {
-    // Remove all non-digit characters except +
-    let cleaned = phoneNumber.replace(/[^\d+]/g, '');
-    
-    // If it starts with +, remove the + and country code
-    if (cleaned.startsWith('+')) {
-      const withoutPlus = cleaned.substring(1);
-      
-      // Common country codes and their lengths
-      const countryCodes = [
-        { code: '91', length: 2 },   // India
-        { code: '1', length: 1 },    // US/Canada
-        { code: '44', length: 2 },   // UK
-        { code: '86', length: 2 },   // China
-        { code: '81', length: 2 },   // Japan
-        { code: '49', length: 2 },   // Germany
-        { code: '33', length: 2 },   // France
-        { code: '39', length: 2 },   // Italy
-        { code: '7', length: 1 },    // Russia
-        { code: '55', length: 2 },   // Brazil
-      ];
-      
-      // Try to match known country codes
-      for (const { code, length } of countryCodes) {
-        if (withoutPlus.startsWith(code)) {
-          const remainingNumber = withoutPlus.substring(length);
-          // Return the number without country code if it looks like a valid phone number
-          if (remainingNumber.length >= 10) {
-            return remainingNumber;
-          }
-        }
-      }
-      
-      // If no known country code matched, assume it's a 1-3 digit country code
-      // and take the last 10 digits as the phone number
-      if (withoutPlus.length > 10) {
-        return withoutPlus.substring(withoutPlus.length - 10);
-      }
-      
-      return withoutPlus;
-    }
-    
-    // If it doesn't start with +, check if it has a country code prefix
-    if (cleaned.startsWith('91') && cleaned.length === 12) {
-      // Indian number with country code (91XXXXXXXXXX)
-      return cleaned.substring(2);
-    }
-    
-    if (cleaned.startsWith('1') && cleaned.length === 11) {
-      // US/Canada number with country code (1XXXXXXXXXX)
-      return cleaned.substring(1);
-    }
-    
-    // For other cases, return as is (assuming it's already in national format)
-    return cleaned;
-  };
-
-  const handleSelfieCapture = async (imageData: string) => {
+  const handleSelfieCapture = (imageData: string) => {
     setRegistrationData(prev => ({ ...prev, selfie: imageData }));
+    goTo('photoVerification');
+  };
+
+  const handleEdit = (step: Step) => {
+    setReturnToReview(true);
+    goTo(step);
+  };
+
+  const handleIssueDigitalId = async () => {
     setError('');
+    resetIssuance();
+    setCurrentStep('issuing');
 
     try {
       const personalDetails = registrationData.personalDetails!;
-      
-      // Remove country code from phone number before sending to API
-      const phoneWithoutCountryCode = removeCountryCode(personalDetails.phone);
-      
-      console.log('Original phone:', personalDetails.phone);
-      console.log('Phone without country code:', phoneWithoutCountryCode);
-      
-      const url = buildUserCreationUrl();
+      const imageData = registrationData.selfie!;
+      const { credentialTemplateId, issuerInfo } = apiConfig.credIssuer;
 
-      // Prepare the user creation payload
-      const payload = {
-        first_name: personalDetails.firstName,
-        last_name: personalDetails.lastName,
-        email: personalDetails.email,
-        phone_number: phoneWithoutCountryCode,
-        gender: personalDetails.gender,
-        date_of_birth: personalDetails.dateOfBirth,
-        national_id_number: personalDetails.nationalId,
-        photo: imageData
-      };
-
-      console.log('User creation payload:', JSON.stringify(payload, null, 2));
-
-      // Call the User Creation API
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
+      // Call the CredIssuer Digital ID issuance API; status is then polled by transaction ID
+      const response = await issueDigitalId({
+        issuer_info: {
+          org_code: issuerInfo.orgCode,
+          email: issuerInfo.email
         },
-        body: JSON.stringify(payload)
+        issuer_credential_template_id: credentialTemplateId,
+        credential_data: [buildDigitalIdCredentialData(personalDetails, imageData)]
       });
 
-      if (response.status === 201) {
-        const responseData: UserCreationResponse = await response.json();
-        console.log('User creation response:', responseData);
-        
-        // 201 status means successful creation
-        setCurrentStep('success');
-      } else {
-        // Handle error responses
-        let errorMessage = `Registration failed. Please try again. (Error: ${response.status})`;
-        
-        try {
-          const errorData = await response.json();
-          if (errorData.message) {
-            errorMessage = errorData.message;
-          }
-        } catch (e) {
-          // If JSON parsing fails, use the default error message
-          console.error('Failed to parse error response:', e);
-        }
-        
-        console.error('User creation API error:', response.status, errorMessage);
-        setError(errorMessage);
-        setCurrentStep('failed');
-      }
+      console.log('Digital ID issuance response:', response);
+      setTransactionId(response.transaction_id);
     } catch (error) {
-      console.error('API call failed:', error);
-      setError('Network error. Please check your connection and try again.');
+      console.error('Digital ID issuance API error:', error);
+      setError(
+        error instanceof CredIssuerError
+          ? error.message
+          : 'Network error. Please check your connection and try again.'
+      );
       setCurrentStep('failed');
     }
   };
 
-  const handleBackToDocument = () => {
-    setCurrentStep('document');
-    setError('');
-  };
-
-  const handleBackToPersonal = () => {
-    setCurrentStep('personal');
-    setError('');
-  };
-
   const handleStartOver = () => {
-    setCurrentStep('document');
+    removeDraft();
+    setCurrentStep('personal');
     setRegistrationData({});
     setError('');
+    setSavedAt(undefined);
+    setResumedAt(undefined);
+    setReturnToReview(false);
+    resetIssuance();
   };
 
   const handleRetry = () => {
-    setCurrentStep('selfie');
+    setCurrentStep('photoVerification');
     setError('');
+    resetIssuance();
   };
 
-  const getStepNumber = (step: Step) => {
-    switch (step) {
-      case 'document': return 1;
-      case 'personal': return 2;
-      case 'selfie': return 3;
-      case 'success': return 3;
-      case 'failed': return 3;
-      default: return 1;
-    }
-  };
-
-  const getStepIcon = (step: Step) => {
-    switch (step) {
-      case 'document': return FileText;
-      case 'personal': return User;
-      case 'selfie': return Camera;
-      case 'success': return CheckCircle;
-      case 'failed': return Shield;
-      default: return FileText;
-    }
+  const handleSelectStep = (index: number) => {
+    if (currentStep === 'photoVerification') setReturnToReview(true);
+    goTo(WIZARD_STEPS[index]);
   };
 
   const getStepTitle = (step: Step) => {
     switch (step) {
-      case 'document': return 'Upload National ID';
-      case 'personal': return 'Verify Information';
-      case 'selfie': return 'Identity Verification';
-      case 'success': return 'Digital ID Created';
-      case 'failed': return 'Registration Failed';
-      default: return 'GovPass Digital ID Registration';
+      case 'personal': return 'Enter your details';
+      case 'selfie': return 'Take a selfie';
+      case 'photoVerification': return 'Review and issue';
+      case 'issuing': return 'Issuing your Digital ID';
+      case 'success': return 'Your Digital ID is ready';
+      case 'failed': return 'Issuance did not complete';
+      default: return 'Ooru Digital ID';
     }
   };
 
   const getStepDescription = (step: Step) => {
     switch (step) {
-      case 'document': return 'Upload your physical National ID for automatic data extraction';
-      case 'personal': return 'Review and edit the extracted information';
-      case 'selfie': return 'Take a selfie to complete your identity verification';
-      case 'success': return 'Your digital national ID has been successfully created';
-      case 'failed': return 'We encountered an issue with your registration';
-      default: return 'Get your secure GovPass ID in just 3 simple steps. Fast, secure, and officially recognized.';
+      case 'personal': return 'Enter your details exactly as they should appear on your Digital ID.';
+      case 'selfie': return 'Take a live photo so we can confirm the application is yours.';
+      case 'photoVerification': return 'Check everything before we issue your Digital ID. You can edit any section.';
+      case 'issuing': return 'Your details have been submitted and your Digital ID is being generated.';
+      case 'success': return 'Your Digital ID has been issued and is ready to add to your wallet.';
+      case 'failed': return 'Something went wrong while issuing your Digital ID. You can try again.';
+      default: return '';
     }
   };
 
-  // Show login page if not authenticated
-  if (!isAuthenticated) {
-    return <LoginPage onLogin={handleLogin} />;
-  }
+  const stepIndex = WIZARD_STEPS.indexOf(currentStep);
+  const isWizardStep = stepIndex !== -1;
 
-  const StepIcon = getStepIcon(currentStep);
+  // Direction of travel through the wizard: 1 forward, -1 back
+  const orderIndex = isWizardStep ? stepIndex : WIZARD_STEPS.length;
+  const previousIndex = useRef(orderIndex);
+  const direction = orderIndex >= previousIndex.current ? 1 : -1;
+  useEffect(() => {
+    previousIndex.current = orderIndex;
+  }, [orderIndex]);
+
+  // Scroll to the top of the new step
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [currentStep]);
+
+  // Auto-save completed steps so the application can be resumed on a later visit
+  useEffect(() => {
+    if (!isWizardStep || (!registrationData.personalDetails && !registrationData.selfie)) return;
+    const now = Date.now();
+    if (writeDraft({ data: registrationData, step: currentStep, savedAt: now })) setSavedAt(now);
+  }, [isWizardStep, registrationData, currentStep]);
+
+  const { personalDetails, selfie } = registrationData;
+  const card = personalDetails ? toIdCardData(personalDetails, selfie) : undefined;
+  const railCard = toIdCardData(
+    (currentStep === 'personal' ? draftDetails : personalDetails) ?? personalDetails ?? emptyForm,
+    selfie
+  );
+  const hasData = [!!personalDetails, !!selfie, true];
+  const panelSteps = STEP_LABELS.map((label, index) => ({
+    label,
+    summary: [personalDetails && `${personalDetails.givenName} ${personalDetails.surName}`, selfie && 'Photo captured'][index],
+    reachable: hasData.slice(0, index).every(Boolean)
+  }));
+
+  const renderStep = () => {
+    switch (currentStep) {
+      case 'personal':
+        return (
+          <PersonalDetailsForm
+            onNext={handlePersonalDetails}
+            onChange={setDraftDetails}
+            initialValues={personalDetails}
+            submitLabel={returnToReview ? 'Save and return to review' : undefined}
+          />
+        );
+      case 'selfie':
+        return (
+          <SelfieCapture
+            onNext={handleSelfieCapture}
+            onBack={() => goTo('personal')}
+            error={error}
+            initialImage={selfie}
+            submitLabel={returnToReview ? 'Save and return to review' : undefined}
+          />
+        );
+      case 'photoVerification':
+        return (
+          <PhotoVerification
+            details={personalDetails!}
+            selfie={selfie!}
+            card={card!}
+            onEdit={handleEdit}
+            onContinue={handleIssueDigitalId}
+            onBack={() => goTo('selfie')}
+          />
+        );
+      case 'issuing':
+        return <IssuanceProgress transactionId={transactionId} status={issuanceStatus} card={card!} />;
+      case 'success':
+        return <SuccessScreen onStartOver={handleStartOver} credentialId={credentialId} />;
+      case 'failed':
+        return <FailedScreen error={error} onRetry={handleRetry} onStartOver={handleStartOver} />;
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Compact Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-3">
-            <div className="flex items-center space-x-3">
-              <div className="w-6 h-6 bg-[#5D5FEF] rounded-lg flex items-center justify-center">
-                <Shield className="w-4 h-4 text-white" />
-              </div>
-              <div>
-                <h1 className="text-sm font-bold text-gray-900">GovPass ID Portal</h1>
-                <p className="text-xs text-gray-500">Republic of Digital Nations</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center space-x-3">
-              <div className="flex items-center space-x-2 text-xs text-gray-600">
-                <User className="w-3 h-3" />
-                <span>{user?.name}</span>
-              </div>
-              <button
-                onClick={handleLogout}
-                className="text-xs text-gray-500 hover:text-gray-700 transition-colors px-2 py-1 rounded"
+    <MotionConfig reducedMotion="user">
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.35 }}
+        className="grid min-h-screen bg-canvas lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]"
+      >
+        <BrandPanel
+          steps={panelSteps}
+          current={stepIndex}
+          onSelect={handleSelectStep}
+          card={railCard}
+          showCard={currentStep !== 'photoVerification' && currentStep !== 'issuing'}
+          issuedSvgUrl={currentStep === 'success' ? svgUrl : undefined}
+          savedAt={savedAt}
+        />
+
+        <div className="flex min-h-screen min-w-0 flex-col">
+          <main className="flex flex-1 flex-col px-6 py-10 sm:px-10 lg:px-12 lg:py-16 xl:px-16">
+            <AnimatePresence mode="wait" custom={direction} initial={false}>
+              <motion.section
+                key={currentStep}
+                custom={direction}
+                variants={stepVariants}
+                initial="enter"
+                animate="center"
+                exit="exit"
+                transition={{ duration: 0.28, ease }}
+                className={`w-full min-w-0 ${isWizardStep ? 'max-w-[600px]' : ''}`}
+                aria-labelledby="step-title"
               >
-                Logout
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
+                {isWizardStep && resumedAt && (
+                  <Callout title="Welcome back" className="mb-10">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <p>We restored the application you saved on {formatSavedAt(resumedAt)}.</p>
+                      <Button type="button" variant="outline" size="sm" onClick={handleStartOver}>
+                        Start over
+                      </Button>
+                    </div>
+                  </Callout>
+                )}
 
-      {/* Compact Hero Section */}
-      <div className="bg-gradient-to-br from-[#5D5FEF] via-[#7C3AED] to-[#5D5FEF]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="text-center space-y-4">
-            {/* Step Icon */}
-            <div className="flex justify-center">
-              <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
-                <StepIcon className="w-6 h-6 text-white" />
-              </div>
-            </div>
-            
-            {/* Title */}
-            <div className="space-y-2">
-              <h1 className="text-2xl md:text-3xl font-bold text-white">
-                {getStepTitle(currentStep)}
-              </h1>
-              <p className="text-sm text-white/90 max-w-2xl mx-auto">
-                {getStepDescription(currentStep)}
-              </p>
-            </div>
-
-            {/* Features */}
-            {currentStep === 'document' && (
-              <div className="flex flex-wrap justify-center gap-4 text-xs text-white">
-                <div className="flex items-center space-x-1">
-                  <div className="w-1.5 h-1.5 bg-yellow-400 rounded-full"></div>
-                  <span>Smart data extraction</span>
+                <div className="mb-10 flex max-w-[62ch] flex-col gap-2">
+                  {isWizardStep && (
+                    <p className="text-small text-ink-muted">
+                      Step {stepIndex + 1} of {WIZARD_STEPS.length}
+                    </p>
+                  )}
+                  <h1 id="step-title" className="text-display-32 sm:text-display-40" aria-label={getStepTitle(currentStep)}>
+                    {getStepTitle(currentStep).split(' ').map((word, i) => (
+                      <span key={i} className="inline-block overflow-hidden pb-1 align-bottom" aria-hidden>
+                        <motion.span
+                          className="inline-block"
+                          initial={{ y: '110%' }}
+                          animate={{ y: 0 }}
+                          transition={{ duration: 0.7, ease, delay: 0.1 + i * 0.06 }}
+                        >
+                          {word}&nbsp;
+                        </motion.span>
+                      </span>
+                    ))}
+                  </h1>
+                  <p className="text-body text-ink-muted">{getStepDescription(currentStep)}</p>
                 </div>
-                <div className="flex items-center space-x-1">
-                  <div className="w-1.5 h-1.5 bg-green-400 rounded-full"></div>
-                  <span>Auto-fill forms</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <div className="w-1.5 h-1.5 bg-blue-400 rounded-full"></div>
-                  <span>Ready in 5 minutes</span>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {currentStep !== 'success' && currentStep !== 'failed' && (
-          <div className="mb-6">
-            <StepIndicator 
-              currentStep={getStepNumber(currentStep)} 
-              totalSteps={3} 
-            />
-          </div>
-        )}
+                {renderStep()}
+              </motion.section>
+            </AnimatePresence>
+          </main>
 
-        {currentStep === 'document' && (
-          <DocumentUpload 
-            onNext={handleDocumentUpload}
-          />
-        )}
-
-        {currentStep === 'personal' && (
-          <PersonalDetailsForm 
-            onNext={handlePersonalDetails}
-            onBack={handleBackToDocument}
-            extractedData={registrationData.extractedData}
-          />
-        )}
-
-        {currentStep === 'selfie' && (
-          <SelfieCapture 
-            onNext={handleSelfieCapture}
-            onBack={handleBackToPersonal}
-            error={error}
-          />
-        )}
-
-        {currentStep === 'success' && (
-          <SuccessScreen 
-            onStartOver={handleStartOver}
-          />
-        )}
-
-        {currentStep === 'failed' && (
-          <FailedScreen 
-            error={error}
-            onRetry={handleRetry}
-            onStartOver={handleStartOver}
-          />
-        )}
-      </main>
-
-      {/* Compact Footer */}
-      <footer className="bg-white border-t mt-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex flex-col md:flex-row justify-between items-center space-y-2 md:space-y-0">
-            <div className="text-xs text-gray-500">
-              © 2025 GovPass ID Portal. All rights reserved.
+          <footer className="px-6 py-6 sm:px-10 lg:px-12 xl:px-16">
+            <div className="flex flex-col items-start justify-between gap-2 border-t border-line pt-6 text-caption text-ink-muted sm:flex-row sm:items-center">
+              <p>© {new Date().getFullYear()} Ooru Digital Private Limited</p>
+              <nav className="flex gap-6" aria-label="Legal">
+                <a href="#" className="hover:text-ink">Privacy</a>
+                <a href="#" className="hover:text-ink">Terms</a>
+                <a href="mailto:info@ooru.io" className="hover:text-ink">Support</a>
+              </nav>
             </div>
-            <div className="flex space-x-4 text-xs">
-              <a href="#" className="text-gray-500 hover:text-gray-700 transition-colors">Privacy</a>
-              <a href="#" className="text-gray-500 hover:text-gray-700 transition-colors">Terms</a>
-              <a href="#" className="text-gray-500 hover:text-gray-700 transition-colors">Support</a>
-            </div>
-          </div>
+          </footer>
         </div>
-      </footer>
-    </div>
+      </motion.div>
+    </MotionConfig>
   );
 }
 

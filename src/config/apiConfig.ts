@@ -1,54 +1,74 @@
 // Centralized API Configuration
 export interface APIConfig {
-  userCreation: {
+  credIssuer: {
+    // Relative path: proxied to https://api.credissuer.com by nginx (prod) and Vite (dev)
     baseUrl: string;
-    endpoint: string;
-  };
-  ocr: {
-    dmsBaseUrl: string;
-    csrfToken: string;
-    sessionId: string;
-    authToken: string;
-  };
-  llm: {
-    apiKey: string;
-    baseUrl: string;
-    model: string;
+    issueEndpoint: string;
+    issuedEndpoint: string;
+    presentationEndpoint: string;
+    statusPollIntervalMs: number;
+    statusPollTimeoutMs: number;
+    credentialTemplateId: string;
+    modeOfIssuance: string;
+    apiToken: string;
+    issuerInfo: {
+      orgCode: string;
+      email: string;
+    };
   };
 }
 
+const env = import.meta.env;
+
 // Production API Configuration
 export const apiConfig: APIConfig = {
-  userCreation: {
-    baseUrl: 'https://id.digital.credissuer.com',
-    endpoint: '/api/users/create'
-  },
-  ocr: {
-    dmsBaseUrl: 'https://dms.credissuer.com',
-    csrfToken: 'DSHvszpKwC1rH3CluyIayGzAImLUuOaS',
-    sessionId: '0uqqyicrmuh3xm2e10tuf30a024v12b2',
-    authToken: 'Basic YWRtaW46UEBwZXJOZ3gmNzg5'
-  },
-  llm: {
-    apiKey: '97a8565c386608873d7cac933cbca995f6b42a2c',
-    baseUrl: 'https://staging.credissuer.com/api/credentials/llm-extraction',
-    model: 'gpt-4o-mini'
+  credIssuer: {
+    baseUrl: '/api/credentials',
+    issueEndpoint: '/issue/client/bulk',
+    issuedEndpoint: '/issued',
+    presentationEndpoint: '/presentation',
+    statusPollIntervalMs: 3000,
+    statusPollTimeoutMs: 5 * 60 * 1000,
+    credentialTemplateId: env.VITE_CREDISSUER_TEMPLATE_ID || '',
+    modeOfIssuance: 'issue_and_notify',
+    apiToken: env.VITE_CREDISSUER_API_TOKEN || '',
+    issuerInfo: {
+      orgCode: env.VITE_CREDISSUER_ORG_CODE || '',
+      email: env.VITE_CREDISSUER_ISSUER_EMAIL || ''
+    }
   }
 };
 
-// Helper function to build user creation URL
-export const buildUserCreationUrl = (): string => {
-  return apiConfig.userCreation.baseUrl + apiConfig.userCreation.endpoint;
+// Helper function to build the Digital ID issuance URL
+export const buildCredentialIssueUrl = (): string => {
+  const { baseUrl, issueEndpoint, credentialTemplateId, modeOfIssuance } = apiConfig.credIssuer;
+  const params = new URLSearchParams({
+    credential_template: credentialTemplateId,
+    mode_of_issuance: modeOfIssuance
+  });
+  return `${baseUrl}${issueEndpoint}?${params.toString()}`;
 };
 
-// Common headers for OCR API
-export const getOCRHeaders = () => ({
-  'X-CSRFToken': apiConfig.ocr.csrfToken,
-  'Authorization': apiConfig.ocr.authToken
+// Helper function to build the issuance status URL for a transaction
+export const buildIssuedCredentialsUrl = (transactionId: string): string => {
+  const { baseUrl, issuedEndpoint } = apiConfig.credIssuer;
+  const params = new URLSearchParams({ offset: '0', limit: '10' });
+  return `${baseUrl}${issuedEndpoint}/${encodeURIComponent(transactionId)}?${params.toString()}`;
+};
+
+// Returns a signed CDN link to the credential's PDF presentation
+export const buildPresentationUrl = (): string =>
+  `${apiConfig.credIssuer.baseUrl}${apiConfig.credIssuer.presentationEndpoint}`;
+
+// Public endpoint returning a QR image that adds the credential to CredIssuer Wallet
+export const buildOfferQrUrl = (credentialId: string): string =>
+  `https://api.credissuer.com/api/mdl/offer-qr/${encodeURIComponent(credentialId)}`;
+
+export const getCredIssuerHeaders = (): Record<string, string> => ({
+  'Authorization': `Bearer ${apiConfig.credIssuer.apiToken}`,
+  'Content-Type': 'application/json'
 });
 
-// Common headers for LLM API (now using CredIssuer endpoint)
-export const getLLMHeaders = () => ({
-  'Authorization': `Bearer ${apiConfig.llm.apiKey}`,
-  'Content-Type': 'application/json'
+export const getCredIssuerStatusHeaders = (): Record<string, string> => ({
+  'Authorization': `Bearer ${apiConfig.credIssuer.apiToken}`
 });
