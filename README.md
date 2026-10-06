@@ -127,7 +127,3 @@ helm upgrade --install digital-id-web ./helm/digital-id-web \
 - **Never commit secrets.** `.env.local` is gitignored. Only `.env.example`, with empty values, belongs in the repository.
 - **Drafts are stored unencrypted.** Unfinished applications, including the selfie, are kept in the browser's `localStorage` until the application is submitted or the user starts over. Don't rely on this on shared devices.
 - **Reporting a vulnerability:** use GitHub's private vulnerability reporting on this repository. Please don't open a public issue.
-
-## License
-
-No license is granted. All rights reserved.
