@@ -122,7 +122,7 @@ helm upgrade --install digital-id-web ./helm/digital-id-web \
 
 ## Security and privacy
 
-- **The API token stays on the server.** The browser never receives it: nginx in production, and the Vite dev server locally, add the `Authorization` header when forwarding requests. nginx only forwards the three calls the portal makes (issue, issuance status and PDF presentation) and refuses any other `/api/credentials/` path. Even so, use a token limited to issuance for a single template, and rotate it regularly.
+- **The API token stays on the server.** The browser never receives it: nginx in production, and the Vite dev server locally, add the `Authorization` header when forwarding requests. Both proxies forward only the three calls the portal makes (issue, issuance status and PDF presentation) and return `404` for any other `/api/credentials/` path. Even so, use a token limited to issuance for a single template, and rotate it regularly.
 - **Build-time variables are public.** Vite inlines every `VITE_*` variable into the JavaScript bundle, so never put a secret in one.
 - **Never commit secrets.** `.env.local` is gitignored. Only `.env.example`, with empty values, belongs in the repository.
 - **Drafts are stored unencrypted.** Unfinished applications, including the selfie, are kept in the browser's `localStorage` until the application is submitted or the user starts over. Don't rely on this on shared devices.

@@ -98,7 +98,7 @@ The browser calls the relative path `/api/credentials/...`, and a proxy forwards
 The proxy is configured in two places:
 
 - **Production:** the `/api/credentials/` locations in `nginx.conf`. The file is installed as an nginx template, so `${ISSUER_API_TOKEN}` is filled in from the container's environment at startup. Only the three calls below are forwarded; any other `/api/credentials/` path returns `404`, so the proxy can't be used to call other CredIssuer APIs with the token.
-- **Development:** `server.proxy['/api/credentials']` in `vite.config.ts`, which reads `ISSUER_API_TOKEN` from `.env.local`
+- **Development:** `server.proxy` in `vite.config.ts`, which reads `ISSUER_API_TOKEN` from `.env.local`. It uses the same allow-list as nginx (`ISSUER_ROUTE`), and the `issuer-route-guard` plugin returns `404` for any other `/api/credentials` path. If you change the allowed endpoints, update `ISSUER_ROUTE` and the nginx `location` together.
 
 Two kinds of resource bypass the proxy and are loaded straight from CredIssuer by the browser: the wallet offer QR image and the URLs CredIssuer returns (`svg_url`, `file_path`).
 
