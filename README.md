@@ -31,7 +31,7 @@ cp .env.example .env.local   # then fill in the values
 npm run dev
 ```
 
-The dev server runs at `http://localhost:5173`. It proxies `/api/credentials` to the issuance API and adds the `Authorization` header from `ISSUER_API_TOKEN` (see `server.proxy` in `vite.config.ts`).
+The dev server runs at `http://localhost:5173`. It proxies `/api/credentials` to the issuance API and adds the `Authorization` header from `ISSUER_API_TOKEN` (see `server.proxy` in `vite.config.ts`). If `ISSUER_API_TOKEN` isn't set, the dev server refuses to start. `npm run build` doesn't need the token.
 
 ### Scripts
 
