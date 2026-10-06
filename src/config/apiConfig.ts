@@ -29,12 +29,12 @@ export const apiConfig: APIConfig = {
     presentationEndpoint: '/presentation',
     statusPollIntervalMs: 3000,
     statusPollTimeoutMs: 5 * 60 * 1000,
-    credentialTemplateId: env.VITE_CREDISSUER_TEMPLATE_ID || '',
+    credentialTemplateId: env.VITE_ISSUER_TEMPLATE_ID || '',
     modeOfIssuance: 'issue_and_notify',
-    apiToken: env.VITE_CREDISSUER_API_TOKEN || '',
+    apiToken: env.VITE_ISSUER_API_TOKEN || '',
     issuerInfo: {
-      orgCode: env.VITE_CREDISSUER_ORG_CODE || '',
-      email: env.VITE_CREDISSUER_ISSUER_EMAIL || ''
+      orgCode: env.VITE_ISSUER_ORG_CODE || '',
+      email: env.VITE_ISSUER_EMAIL || ''
     }
   }
 };

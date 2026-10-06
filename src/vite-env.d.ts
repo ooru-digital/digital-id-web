@@ -1,9 +1,10 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  readonly VITE_CREDISSUER_API_TOKEN?: string;  readonly VITE_CREDISSUER_TEMPLATE_ID?: string;
-  readonly VITE_CREDISSUER_ORG_CODE?: string;
-  readonly VITE_CREDISSUER_ISSUER_EMAIL?: string;
+  readonly VITE_ISSUER_API_TOKEN?: string;
+  readonly VITE_ISSUER_TEMPLATE_ID?: string;
+  readonly VITE_ISSUER_ORG_CODE?: string;
+  readonly VITE_ISSUER_EMAIL?: string;
 }
 
 interface ImportMeta {
