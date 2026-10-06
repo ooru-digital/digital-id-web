@@ -7,4 +7,13 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['lucide-react'],
   },
+  server: {
+    proxy: {
+      '/api/credentials': {
+        target: 'https://api.credissuer.com',
+        changeOrigin: true,
+        secure: true,
+      },
+    },
+  },
 });
