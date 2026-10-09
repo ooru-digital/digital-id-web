@@ -10,7 +10,6 @@ export interface APIConfig {
     statusPollTimeoutMs: number;
     credentialTemplateId: string;
     modeOfIssuance: string;
-    apiToken: string;
     issuerInfo: {
       orgCode: string;
       email: string;
@@ -29,12 +28,11 @@ export const apiConfig: APIConfig = {
     presentationEndpoint: '/presentation',
     statusPollIntervalMs: 3000,
     statusPollTimeoutMs: 5 * 60 * 1000,
-    credentialTemplateId: env.VITE_CREDISSUER_TEMPLATE_ID || '',
+    credentialTemplateId: env.VITE_ISSUER_TEMPLATE_ID || '',
     modeOfIssuance: 'issue_and_notify',
-    apiToken: env.VITE_CREDISSUER_API_TOKEN || '',
     issuerInfo: {
-      orgCode: env.VITE_CREDISSUER_ORG_CODE || '',
-      email: env.VITE_CREDISSUER_ISSUER_EMAIL || ''
+      orgCode: env.VITE_ISSUER_ORG_CODE || '',
+      email: env.VITE_ISSUER_EMAIL || ''
     }
   }
 };
@@ -64,11 +62,8 @@ export const buildPresentationUrl = (): string =>
 export const buildOfferQrUrl = (credentialId: string): string =>
   `https://api.credissuer.com/api/mdl/offer-qr/${encodeURIComponent(credentialId)}`;
 
+// The API token is never sent from the browser: nginx (prod) and Vite (dev) add the
+// Authorization header when proxying, so it stays out of the JavaScript bundle.
 export const getCredIssuerHeaders = (): Record<string, string> => ({
-  'Authorization': `Bearer ${apiConfig.credIssuer.apiToken}`,
   'Content-Type': 'application/json'
-});
-
-export const getCredIssuerStatusHeaders = (): Record<string, string> => ({
-  'Authorization': `Bearer ${apiConfig.credIssuer.apiToken}`
 });

@@ -2,8 +2,7 @@ import {
   buildCredentialIssueUrl,
   buildIssuedCredentialsUrl,
   buildPresentationUrl,
-  getCredIssuerHeaders,
-  getCredIssuerStatusHeaders
+  getCredIssuerHeaders
 } from '../config/apiConfig';
 import type { DigitalIdCredentialData } from '../utils/digitalIdCredential';
 
@@ -82,7 +81,6 @@ export const fetchIssuanceStatus = async (
 ): Promise<IssuanceStatusResponse> => {
   const response = await fetch(buildIssuedCredentialsUrl(transactionId), {
     method: 'GET',
-    headers: getCredIssuerStatusHeaders(),
     signal
   });
 
